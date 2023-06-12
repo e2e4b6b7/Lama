@@ -72,6 +72,8 @@ void *gc_alloc_on_existing_heap (size_t size) {
 }
 
 void *gc_alloc (size_t size) {
+//  fprintf(stderr, "allocation\n");
+//  exit(1);
   mark_phase();
 
   compact_phase(size);
@@ -89,41 +91,17 @@ void mark_phase (void) {
 
 void compact_phase (size_t additional_size) {
   size_t live_size = compute_locations();
-
   // all in words
-  size_t next_heap_size =
-      MAX(live_size * EXTRA_ROOM_HEAP_COEFFICIENT + additional_size, MINIMUM_HEAP_CAPACITY);
-  size_t next_heap_pseudo_size =
-      MAX(next_heap_size, heap.size);   // this is weird but here is why it happens:
-  // if we allocate too little heap right now, we may lose access to some alive objects
-  // however, after we physically relocate all of our objects we will shrink allocated memory if it is possible
+  size_t next_heap_size = MAX(heap.size * 2, heap.size + additional_size);
 
-  memory_chunk old_heap = heap;
-  heap.begin            = mremap(
-      heap.begin, WORDS_TO_BYTES(heap.size), WORDS_TO_BYTES(next_heap_pseudo_size), MREMAP_MAYMOVE);
-  if (heap.begin == MAP_FAILED) {
-    perror("ERROR: compact_phase: mremap failed\n");
-    exit(1);
+  if (mprotect (heap.begin, next_heap_size, PROT_READ | PROT_WRITE) == -1) {
+    perror ("ERROR: compact_phase: mprotect failed\n");
+    exit   (1);
   }
-  heap.end     = heap.begin + next_heap_pseudo_size;
-  heap.size    = next_heap_pseudo_size;
-  heap.current = heap.begin + (old_heap.current - old_heap.begin);
 
-  update_references(&old_heap);
-  physically_relocate(&old_heap);
+  update_references(&heap);
+  physically_relocate(&heap);
 
-  // shrink it if possible, otherwise this code won'test_small_tree_compaction do anything, in both cases references
-  // will remain valid
-  heap.begin = mremap(
-      heap.begin,
-      WORDS_TO_BYTES(heap.size),
-      WORDS_TO_BYTES(next_heap_size),
-      0   // in this case we don't set MREMAP_MAYMOVE because it shouldn'test_small_tree_compaction move :)
-  );
-  if (heap.begin == MAP_FAILED) {
-    perror("ERROR: compact_phase: mremap failed\n");
-    exit(1);
-  }
   heap.end     = heap.begin + next_heap_size;
   heap.size    = next_heap_size;
   heap.current = heap.begin + live_size;
@@ -302,17 +280,27 @@ void scan_global_area (void) {
 
 extern void gc_test_and_mark_root (size_t **root) { mark((void *)*root); }
 
+static const size_t MAX_HEAP_SIZE = 1 << 20;
+
 extern void __init (void) {
   signal(SIGSEGV, handler);
   size_t space_size = INIT_HEAP_SIZE * sizeof(size_t);
 
   srandom(time(NULL));
 
-  heap.begin = mmap(
-      NULL, space_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
+  heap.begin = mmap (NULL,
+                     MAX_HEAP_SIZE,
+                     PROT_NONE,
+                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT,
+                     -1,
+                     0);
   if (heap.begin == MAP_FAILED) {
-    perror("ERROR: __init: mmap failed\n");
-    exit(1);
+    perror ("ERROR: __init: mmap failed\n");
+    exit   (1);
+  }
+  if (mprotect (heap.begin, space_size, PROT_READ | PROT_WRITE) == -1) {
+    perror ("ERROR: __init: mprotect failed\n");
+    exit   (1);
   }
   heap.end     = heap.begin + INIT_HEAP_SIZE;
   heap.size    = INIT_HEAP_SIZE;
@@ -533,7 +521,7 @@ obj_field_iterator field_begin_iterator (void *obj) {
   obj_field_iterator it = {.type = type, .obj_ptr = obj, .cur_field = get_object_content_ptr(obj)};
   // since string doesn't have any actual fields we set cur_field to the end of object
   if (type == STRING) { it.cur_field = get_end_of_obj(it.obj_ptr); }
-  // skip first member which is basically pointer to the code
+  // skip the first member which is basically pointer to the code
   if (type == CLOSURE) { it.cur_field += MEMBER_SIZE; }
   return it;
 }

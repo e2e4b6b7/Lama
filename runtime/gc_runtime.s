@@ -60,7 +60,7 @@ __gc_root_scan_stack:
 	jmp 	next
 
 loop:
-			movl	(%eax), %ebx
+	movl	(%eax), %ebx
 
 	// check that it is not a pointer to code section
 	// i.e. the following is not true:

@@ -14,11 +14,11 @@
    & (~3))   // since last 2 bits are used for mark-bit and enqueued-bit and due to correct alignment we can expect that last 2 bits don't influence address (they should always be zero)
 #define SET_FORWARD_ADDRESS(x, addr)                                                               \
   (x = ((x & 3) | ((int)(addr))))   // take the last two bits as they are and make all others zero
-#define EXTRA_ROOM_HEAP_COEFFICIENT 2   // TODO: tune this parameter
+#define EXTRA_ROOM_HEAP_COEFFICIENT 2
 #ifdef DEBUG_VERSION
-#  define MINIMUM_HEAP_CAPACITY (8)
+#  define MINIMUM_HEAP_CAPACITY 8
 #else
-#  define MINIMUM_HEAP_CAPACITY (1 << 25)
+#  define MINIMUM_HEAP_CAPACITY (1 << 29)
 #endif
 
 #include <stdbool.h>
