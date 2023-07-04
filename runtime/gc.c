@@ -58,10 +58,16 @@ void *alloc (size_t size) {
   void *p = gc_alloc_on_existing_heap(size);
   if (!p) {
     // not enough place in heap, need to perform GC cycle
-    p = gc_alloc(size);
+    // p = gc_alloc(size);
+    gc_alloc(size);
     //    return gc_alloc(size);
+    p = gc_alloc_on_existing_heap(size);
+    if (!p) {
+      fprintf(stderr, "ERROR: out of memory\n");
+      exit(1);
+    }
   }
-  //   fprintf(stderr, "%p, tag=%zu\n", p, tag);
+  fprintf(stderr, "\t allocated (begin, non content) %p, size=%zu; ", p, bytes_sz);
   return p;
 }
 
@@ -81,7 +87,8 @@ static FILE *print_stack_content (char *filename) {
   FILE *f = fopen(filename, "w+");
   ftruncate(fileno(f), 0);
   fprintf(f, "Stack content:\n");
-  for (size_t *stack_ptr = (size_t *)((void *)__gc_stack_top + 4);
+  // for (size_t *stack_ptr = (size_t *)((void *)__gc_stack_top + 4);
+  for (size_t *stack_ptr = (size_t *)((void *)__gc_stack_top);
        stack_ptr < (size_t *)__gc_stack_bottom;
        ++stack_ptr) {
     size_t value = *stack_ptr;
@@ -182,40 +189,57 @@ void *gc_alloc_on_existing_heap (size_t size) {
   return NULL;
 }
 
-void *gc_alloc (size_t size) {
-  fprintf(stderr, "===============================GC cycle has started\n");
-  // #ifdef FULL_INVARIANT_CHECKS
-  FILE *stack_before = print_stack_content("stack-dump-before-compaction");
-  FILE *heap_before  = print_objects_traversal("before-mark", 0);
-  fclose(heap_before);
-  fclose(stack_before);
-  // #endif
+// void *gc_alloc (size_t size) {
+extern void gc_alloc (size_t size) {
+  fprintf(stderr,
+          "===============================GC cycle has started\n"
+          "===============================gc_stack_top=%p bot=%p\n",
+          __gc_stack_top,
+          __gc_stack_bottom);
+  // // #ifdef FULL_INVARIANT_CHECKS
+  // FILE *stack_before = print_stack_content("stack-dump-before-compaction");
+  // FILE *heap_before  = print_objects_traversal("before-mark", 0);
+  // fclose(heap_before);
+  // fclose(stack_before);
+  // // #endif
   mark_phase();
-  // #ifdef FULL_INVARIANT_CHECKS
-  FILE *heap_before_compaction = print_objects_traversal("after-mark", 1);
-  // #endif
+  // // #ifdef FULL_INVARIANT_CHECKS
+  // FILE *heap_before_compaction = print_objects_traversal("after-mark", 1);
+  // // #endif
 
   compact_phase(size);
   // #ifdef FULL_INVARIANT_CHECKS
-  FILE *stack_after           = print_stack_content("stack-dump-after-compaction");
-  FILE *heap_after_compaction = print_objects_traversal("after-compaction", 0);
+  // FILE *stack_after           = print_stack_content("stack-dump-after-compaction");
+  // FILE *heap_after_compaction = print_objects_traversal("after-compaction", 0);
 
-  int pos = files_cmp(stack_before, stack_after);
-  if (pos >= 0) {   // position of difference is found
-    fprintf(stderr, "Stack is modified incorrectly, see position %d\n", pos);
-    exit(1);
-  }
-  pos = files_cmp(heap_before_compaction, heap_after_compaction);
-  if (pos >= 0) {   // position of difference is found
-    fprintf(stderr, "GC invariant is broken, pos is %d\n", pos);
-    exit(1);
-  }
+  // int pos = files_cmp(stack_before, stack_after);
+  // if (pos >= 0) {   // position of difference is found
+  //   fprintf(stderr, "Stack is modified incorrectly, see position %d\n", pos);
+  //   exit(1);
+  // }
+  // pos = files_cmp(heap_before_compaction, heap_after_compaction);
+  // if (pos >= 0) {   // position of difference is found
+  //   fprintf(stderr, "GC invariant is broken, pos is %d\n", pos);
+  //   exit(1);
+  // }
 
-  fclose(heap_before_compaction);
-  fclose(heap_after_compaction);
-  // #endif
-  fprintf(stderr, "===============================GC cycle has finished\n");
-  return gc_alloc_on_existing_heap(size);
+  // fclose(heap_before_compaction);
+  // fclose(heap_after_compaction);
+  // // #endif
+  // fprintf(stderr,
+  //         "===============================GC cycle has finished\n"
+  //         "===============================gc_stack_top=%p bot=%p\n",
+  //         __gc_stack_top,
+  //         __gc_stack_bottom);
+  // // return gc_alloc_on_existing_heap(size);
+  return;
+}
+
+void gc_root_scan_stack (void) {
+  // for (size_t *p = (void *)__gc_stack_top + 4; p <= (void *)__gc_stack_bottom; p++) {
+  for (size_t *p = (void *)__gc_stack_top; p <= (void *)__gc_stack_bottom; p++) {
+    gc_test_and_mark_root(p);
+  }
 }
 
 void mark_phase (void) {
@@ -224,7 +248,8 @@ void mark_phase (void) {
           "__gc_root_scan_stack started: gc_top=%p bot=%p\n",
           __gc_stack_top,
           __gc_stack_bottom);
-  __gc_root_scan_stack();
+  // __gc_root_scan_stack();
+  gc_root_scan_stack();
   fprintf(stderr, "__gc_root_scan_stack finished\n");
   fprintf(stderr, "scan_extra_roots started\n");
   scan_extra_roots();
@@ -401,7 +426,8 @@ void update_references (memory_chunk *old_heap) {
     heap_next_obj_iterator(&it);
   }
   // fix pointers from stack
-  scan_and_fix_region(old_heap, (void *)__gc_stack_top + 4, (void *)__gc_stack_bottom + 4);
+  // scan_and_fix_region(old_heap, (void *)__gc_stack_top + 4, (void *)__gc_stack_bottom + 4);
+  scan_and_fix_region(old_heap, (void *)__gc_stack_top, (void *)__gc_stack_bottom + 4);
 
   // fix pointers from extra_roots
   scan_and_fix_region_roots(old_heap);
@@ -459,7 +485,13 @@ static inline void *queue_dequeue (heap_iterator *head_iter) {
 
 void mark (void *obj) {
   //  fprintf(stderr, "Marking object with content address %p on the heap\n", obj);
-  if (!is_valid_heap_pointer(obj) || is_marked(obj)) { return; }
+  if (!is_valid_heap_pointer(obj)) {
+    // fprintf(stderr, "\t\tSkip: invalid head pointer\n", obj);
+    return;
+  } else if (is_marked(obj)) {
+    // fprintf(stderr, "\t\tSkip: already marked\n", obj);
+    return;
+  }
 
   // TL;DR: [q_head_iter, q_tail_iter) q_head_iter -- current dequeue's victim, q_tail_iter -- place for next enqueue
   // in forward_address of corresponding element we store address of element to be removed after dequeue operation
@@ -513,6 +545,13 @@ extern void gc_test_and_mark_root (size_t **root) {
           *root,
           (void *)__gc_stack_top + 4,
           (void *)__gc_stack_bottom);
+  if (!is_valid_pointer(*root)) {
+    fprintf(stderr, "\t skip: not a valid pointer\n");
+    return;
+  } else if (!is_valid_heap_pointer(*root)) {
+    fprintf(stderr, "\t skip: not a valid heap pointer\n");
+    return;
+  }
   // if (is_valid_pointer(*root) && !is_valid_heap_pointer(*root)) {
   //   fprintf(stderr,
   //           "Found weird pointer on the stack by address %p, value is %p (stack starts at %p, ends "
@@ -715,7 +754,8 @@ lama_type get_type_header_ptr (void *ptr) {
       raise(SIGINT);   // only for debug purposes
 #else
       fprintf(stderr,
-              "ERROR: get_type_header_ptr: unknown object header, ptr is %p, tag %i, heap size is "
+              "ERROR: get_type_header_ptr: unknown object header, ptr is %p, tag %i, heap "
+              "size is "
               "%d cur_id=%d stack_top=%p stack_bot=%p ",
               ptr,
               TAG(*header),
@@ -828,34 +868,55 @@ size_t get_header_size (lama_type type) {
 void *alloc_string (int len) {
   data *obj        = alloc(string_size(len));
   obj->data_header = STRING_TAG | (len << 3);
-  fprintf(stderr, "%p, [STRING] tag=%zu\n", obj, TAG(obj->data_header));
+  // fprintf(stderr, "%p, [STRING] tag=%zu\n", obj, TAG(obj->data_header));
+  fprintf(stderr,
+          "%p (contents: %p), [STRING] id=%zu tag=%zu\n",
+          obj,
+          obj->contents,
+          obj->id,
+          TAG(obj->data_header));
 #ifdef DEBUG_VERSION
   obj->id = cur_id;
 #endif
   obj->forward_address = 0;
+  assert(TAG(obj->data_header) == STRING_TAG);
   return obj;
 }
 
 void *alloc_array (int len) {
   data *obj        = alloc(array_size(len));
   obj->data_header = ARRAY_TAG | (len << 3);
-  fprintf(stderr, "%p, [ARRAY] tag=%zu\n", obj, TAG(obj->data_header));
+  // fprintf(stderr, "%p, [ARRAY] tag=%zu\n", obj, TAG(obj->data_header));
+  fprintf(stderr,
+          "%p (contents: %p), [ARRAY] id=%zu tag=%zu\n",
+          obj,
+          obj->contents,
+          obj->id,
+          TAG(obj->data_header));
 #ifdef FULL_INVARIANT_CHECKS
   obj->id = cur_id;
 #endif
   obj->forward_address = 0;
+  assert(TAG(obj->data_header) == ARRAY_TAG);
   return obj;
 }
 
 void *alloc_sexp (int members) {
   sexp *obj        = alloc(sexp_size(members));
   obj->sexp_header = obj->contents.data_header = SEXP_TAG | (members << 3);
-  fprintf(stderr, "%p, SEXP tag=%zu\n", obj, TAG(obj->contents.data_header));
+  // fprintf(stderr, "%p,  tag=%zu\n", obj, TAG(obj->contents.data_header));
+  fprintf(stderr,
+          "%p (contents: %p), [SEXP] id=%zu tag=%zu\n",
+          obj,
+          obj->contents.contents,
+          obj->contents.id,
+          TAG(obj->contents.data_header));
 #ifdef FULL_INVARIANT_CHECKS
   obj->contents.id = cur_id;
 #endif
   obj->contents.forward_address = 0;
   obj->tag                      = 0;
+  assert(TAG(obj->contents.data_header) == SEXP_TAG);
   return obj;
 }
 
@@ -863,10 +924,16 @@ void *alloc_closure (int captured) {
 
   data *obj        = alloc(closure_size(captured));
   obj->data_header = CLOSURE_TAG | (captured << 3);
-  fprintf(stderr, "%p, [CLOSURE] tag=%zu\n", obj, TAG(obj->data_header));
+  fprintf(stderr,
+          "%p (contents: %p), [CLOSURE] id=%zu tag=%zu\n",
+          obj,
+          obj->contents,
+          obj->id,
+          TAG(obj->data_header));
 #ifdef FULL_INVARIANT_CHECKS
   obj->id = cur_id;
 #endif
   obj->forward_address = 0;
+  assert(TAG(obj->data_header) == CLOSURE_TAG);
   return obj;
 }

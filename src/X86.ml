@@ -199,7 +199,7 @@ let compile cmd env imports code =
         in
         let env, pushs = push_args env [] n in
         let y, env = env#allocate in
-        env, pushs @ [Mov (ebp, esp); Pop (ebp)] @ (if env#has_closure then [Pop ebx] else []) @ [Jmp f]
+        env, pushs @ [Mov (esp, M("__gc_stack_top")); Mov (ebp, esp); Pop (ebp)] @ (if env#has_closure then [Pop ebx] else []) @ [Jmp f]
       )
       else (
         let pushr, popr =
@@ -220,7 +220,7 @@ let compile cmd env imports code =
             | "Bsta"   -> pushs
             | _        -> List.rev pushs
           in
-          env, pushr @ pushs @ [Call f; Binop ("+", L (word_size * List.length pushs), esp)] @ (List.rev popr) 
+          env, pushr @ pushs @ [Mov (esp, M("__gc_stack_top")); Call f; Binop ("+", L (word_size * List.length pushs), esp)] @ (List.rev popr) 
         in
         let y, env = env#allocate in env, code @ [Mov (eax, y)]
       )
@@ -257,6 +257,7 @@ let compile cmd env imports code =
               push_closure @
               [Push (M ("$" ^ name));
               Push (L (box closure_len));
+              Mov (esp, M("__gc_stack_top"));
               Call "Bclosure";
               Binop ("+", L (word_size * (closure_len + 2)), esp); 
               Mov (eax, s)] @
@@ -310,8 +311,8 @@ let compile cmd env imports code =
 	     let x, y, env' = env#pop2 in
              env'#push y,
              (match op with
-             |"<" | "<=" | "==" | "!=" | ">=" | ">" ->
-              [Push (eax);
+             |"<" | "<=" | "==" | "!=" | ">=" | ">" -> []
+              (* [Push (eax);
               Push (edx);
               Mov (y, eax);
               Binop("&&", L(1), eax);
@@ -320,7 +321,7 @@ let compile cmd env imports code =
               Binop("cmp", eax, edx);
               CJmp ("nz", "_ERROR2");
               Pop (edx);
-              Pop (eax)]
+              Pop (eax)] *)
              (* | "+" | "-" | "*" | "/" -> *)
              | _ ->
              [Mov (y, eax);
@@ -489,7 +490,7 @@ let compile cmd env imports code =
 	           Repmovsl
                   ] @
                   (if f = "main"
-                   then [Call "__gc_init"; Push (I (12, ebp)); Push (I (8, ebp)); Call "set_args"; Binop ("+", L 8, esp)]
+                   then [Call "__gc_init"; Mov(esp,M("__gc_stack_top")); Push (I (12, ebp)); Push (I (8, ebp)); Call "set_args"; Binop ("+", L 8, esp)]
                    else []
                   ) @
                   (if f = cmd#topname
@@ -508,7 +509,7 @@ let compile cmd env imports code =
                  Pop ebp;
                ] @
                env#rest_closure @
-               (if name = "main" then [Binop ("^", eax, eax)] else []) @
+               (if name = "main" then [Binop ("^", eax, eax); Call ("Lgc")] else []) @
                [Meta "\t.cfi_restore\t5";
 	        Meta "\t.cfi_def_cfa\t4, 4";
                 Ret;

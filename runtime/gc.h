@@ -57,7 +57,8 @@ typedef struct {
 // allocates object of the given size on the heap
 void *alloc(size_t);
 // takes number of words as a parameter
-void *gc_alloc(size_t);
+// void *gc_alloc(size_t);
+extern void gc_alloc(size_t);
 // takes number of words as a parameter
 void *gc_alloc_on_existing_heap(size_t);
 
@@ -88,9 +89,9 @@ extern void __init (
 extern void __shutdown (
     void);   // mostly useful for tests but basically you want to call this in case you want to deallocate all object allocated via GC
 // written in ASM
-extern void __pre_gc (void);
+// extern void __pre_gc (void);
 // written in ASM
-extern void __post_gc (void);
+// extern void __post_gc (void);
 
 // invoked from ASM
 extern void gc_test_and_mark_root (size_t **root);

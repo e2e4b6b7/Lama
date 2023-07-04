@@ -87,10 +87,9 @@ fun normalize (x) {
 
 fun not (x) {0 - x}
 
-disableGC ();
-
 for var i=0;, i<25, i:=i+1
 do
+--  printf("%d\n", i);
   case genCyclicArrays (1000, true, false) of
     [a, b] ->
       printf ("%d\n", (a =?= a) == 0);
@@ -100,6 +99,7 @@ od;
 
 for var i=0;, i<25, i:=i+1
 do
+--  printf("%d\n", i);
   case genCyclicArrays (1000, true, true) of
     [a, b] ->
       printf ("%d\n", (a =?= a) == 0);
@@ -109,6 +109,7 @@ od;
 
 for var i=0;, i<25, i:=i+1
 do
+--  printf("%d\n", i);
   case genCyclicArrays (1000, false, false) of
    [a, b] -> var x = normalize (a =?= b);
              printf ("%d\n", x != 0);
@@ -118,6 +119,7 @@ od;
 
 for var i=0;, i<25, i:=i+1
 do
+--  printf("%d\n", i);
   case genCyclicArrays (1000, false, true) of
    [a, b] -> var x = normalize (a =?= b);
              printf ("%d\n", x != 0);
