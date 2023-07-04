@@ -54,20 +54,22 @@ void *alloc (size_t size) {
 #endif
   size_t bytes_sz = size;
   size            = BYTES_TO_WORDS(size);
+#ifdef DEBUG_PRINT
   fprintf(stderr, "allocation of size %zu words (%zu bytes): ", size, bytes_sz);
+#endif
   void *p = gc_alloc_on_existing_heap(size);
   if (!p) {
     // not enough place in heap, need to perform GC cycle
-    // p = gc_alloc(size);
     gc_alloc(size);
-    //    return gc_alloc(size);
     p = gc_alloc_on_existing_heap(size);
     if (!p) {
       fprintf(stderr, "ERROR: out of memory\n");
       exit(1);
     }
   }
+#ifdef DEBUG_PRINT
   fprintf(stderr, "\t allocated (begin, non content) %p, size=%zu; ", p, bytes_sz);
+#endif
   return p;
 }
 
@@ -191,17 +193,17 @@ void *gc_alloc_on_existing_heap (size_t size) {
 
 // void *gc_alloc (size_t size) {
 extern void gc_alloc (size_t size) {
+#ifdef FULL_INVARIANT_CHECKS
   fprintf(stderr,
           "===============================GC cycle has started\n"
           "===============================gc_stack_top=%p bot=%p\n",
           __gc_stack_top,
           __gc_stack_bottom);
-  // // #ifdef FULL_INVARIANT_CHECKS
-  // FILE *stack_before = print_stack_content("stack-dump-before-compaction");
-  // FILE *heap_before  = print_objects_traversal("before-mark", 0);
-  // fclose(heap_before);
-  // fclose(stack_before);
-  // // #endif
+// FILE *stack_before = print_stack_content("stack-dump-before-compaction");
+// FILE *heap_before  = print_objects_traversal("before-mark", 0);
+// fclose(heap_before);
+// fclose(stack_before);
+#endif
   mark_phase();
   // // #ifdef FULL_INVARIANT_CHECKS
   // FILE *heap_before_compaction = print_objects_traversal("after-mark", 1);
@@ -243,23 +245,28 @@ void gc_root_scan_stack (void) {
 }
 
 void mark_phase (void) {
+#ifdef DEBUG_PRINT
   fprintf(stderr, "marking has started\n");
   fprintf(stderr,
           "__gc_root_scan_stack started: gc_top=%p bot=%p\n",
           __gc_stack_top,
           __gc_stack_bottom);
-  // __gc_root_scan_stack();
+#endif
   gc_root_scan_stack();
+#ifdef DEBUG_PRINT
   fprintf(stderr, "__gc_root_scan_stack finished\n");
   fprintf(stderr, "scan_extra_roots started\n");
+#endif
   scan_extra_roots();
+#ifdef DEBUG_PRINT
   fprintf(stderr, "scan_extra_roots finished\n");
-  // #ifndef DEBUG_VERSION
   fprintf(stderr, "scan_global_area started\n");
+#endif
   scan_global_area();
+#ifdef DEBUG_PRINT
   fprintf(stderr, "scan_global_area finished\n");
-  // #endif
   fprintf(stderr, "marking has finished\n");
+#endif
 }
 
 void compact_phase (size_t additional_size) {
@@ -306,7 +313,9 @@ void compact_phase (size_t additional_size) {
 }
 
 size_t compute_locations () {
+#ifdef DEBUG_PRINT
   fprintf(stderr, "GC compute_locations started\n");
+#endif
   size_t       *free_ptr  = heap.begin;
   heap_iterator scan_iter = heap_begin_iterator();
 
@@ -321,13 +330,17 @@ size_t compute_locations () {
     }
   }
 
+#ifdef DEBUG_PRINT
   fprintf(stderr, "GC compute_locations finished\n");
+#endif
   // it will return number of words
   return free_ptr - heap.begin;
 }
 
 void scan_and_fix_region (memory_chunk *old_heap, void *start, void *end) {
+#ifdef DEBUG_PRINT
   fprintf(stderr, "GC scan_and_fix_region started\n");
+#endif
   for (size_t *ptr = (size_t *)start; ptr < (size_t *)end; ++ptr) {
     size_t ptr_value = *ptr;
     // this can't be expressed via is_valid_heap_pointer, because this pointer may point area corresponding to the old
@@ -341,11 +354,15 @@ void scan_and_fix_region (memory_chunk *old_heap, void *start, void *end) {
       *(void **)ptr         = new_addr + content_offset;
     }
   }
+#ifdef DEBUG_PRINT
   fprintf(stderr, "GC scan_and_fix_region finished\n");
+#endif
 }
 
 void scan_and_fix_region_roots (memory_chunk *old_heap) {
+#ifdef DEBUG_PRINT
   fprintf(stderr, "extra roots started: number os extra roots %i\n", extra_roots.current_free);
+#endif
   for (int i = 0; i < extra_roots.current_free; i++) {
     size_t *ptr       = extra_roots.roots[i];
     size_t  ptr_value = *ptr;
@@ -391,7 +408,9 @@ void scan_and_fix_region_roots (memory_chunk *old_heap) {
 }
 
 void update_references (memory_chunk *old_heap) {
+#ifdef DEBUG_PRINT
   fprintf(stderr, "GC update_references started\n");
+#endif
   heap_iterator it = heap_begin_iterator();
   while (!heap_is_done_iterator(&it)) {
     if (is_marked(get_object_content_ptr(it.current))) {
