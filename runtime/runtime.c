@@ -14,83 +14,7 @@
 
 //# define DEBUG_PRINT 1
 
-#ifdef __ENABLE_GC__
-
-/* GC extern invariant for built-in functions */
-// #  define __pre_gc                                                                                 \
-//     register int *ebp asm("ebp");                                                                  \
-//     const size_t  ebp_v = (ebp);                                                                   \
-//     assert(ebp_v == __builtin_frame_address(0));                                                   \
-//     if (__gc_stack_top == 0) {                                                                     \
-//       __gc_stack_top  = ebp_v;                                                                     \
-//       __gc_stack_top2 = &ebp_v;                                                                    \
-//       fprintf(stderr,                                                                              \
-//               "\tSET: ebp_v %p %p %p %p\n",                                                        \
-//               __gc_stack_top,                                                                      \
-//               ebp_v,                                                                               \
-//               __builtin_frame_address(0),                                                          \
-//               &ebp_v);                                                                             \
-//     } else {                                                                                       \
-//       assert(__gc_stack_top > ebp_v);                                                              \
-//       fprintf(stderr, "\tNOT SET: ebp_v: %p %p\n", ebp_v, &ebp_v);                                 \
-//     }
-int count = 0;
-#  define __pre_gc register int *ebp asm("ebp");
-#  define __post_gc
-// #  define __pre_gc                                                                                 \
-//     register int *ebp asm("ebp");                                                                  \
-//     bool          flag = false;                                                                    \
-//     if (__gc_stack_top == 0 || __gc_stack_top < __builtin_frame_address(0)) {                      \
-//       __gc_stack_top = __builtin_frame_address(0);                                                 \
-//       flag           = true;                                                                       \
-//       count          = 0;                                                                          \
-//     }                                                                                              \
-//     count++;
-// #  define __post_gc                                                                                \
-//     count--;                                                                                       \
-//     if (count == 0 || flag) {                                                                      \
-//       __gc_stack_top = 0;                                                                          \
-//       flag           = false;                                                                      \
-//       count          = 0;                                                                          \
-//     }
-// #  define __post_gc                                                                                \
-//     {                                                                                              \
-//       assert(__gc_stack_top != 0);                                                                 \
-//       if (__gc_stack_top == ebp_v || __gc_stack_top2 == &ebp_v) {                                  \
-//         fprintf(stderr, "\tUNSET: ebp_v %p\n", ebp_v);                                             \
-//         __gc_stack_top  = 0;                                                                       \
-//         __gc_stack_top2 = 0;                                                                       \
-//       } else {                                                                                     \
-//         if (__gc_stack_top < ebp_v) {                                                              \
-//           fprintf(                                                                                 \
-//               stderr, "\tebp_v %p, top %p, bot %p\n", ebp_v, __gc_stack_top, __gc_stack_bottom);   \
-//           assert(false);                                                                           \
-//         } else {                                                                                   \
-//           fprintf(stderr,                                                                          \
-//                   "\tTOP>ebp_v: %p > %p %p %p\n",                                                  \
-//                   __gc_stack_top,                                                                  \
-//                   ebp_v,                                                                           \
-//                   __builtin_frame_address(0),                                                      \
-//                   &ebp_v);                                                                         \
-//         }                                                                                          \
-//       }                                                                                            \
-//     }
-
-#else
-
-#  define __pre_gc __pre_gc_subst
-#  define __post_gc __post_gc_subst
-
-void __pre_gc_subst () { }
-
-void __post_gc_subst () { }
-
-#endif
 /* end */
-
-// TODO: remove
-extern size_t __gc_stack_top, __gc_stack_bottom;
-size_t        __gc_stack_top2 = 0;
 
 static void vfailure (char *s, va_list args) {
   fprintf(stderr, "*** FAILURE: ");
@@ -167,15 +91,12 @@ extern int LcompareTags (void *p, void *q) {
 // Functional synonym for built-in operator ":";
 void *Ls__Infix_58 (void *p, void *q) {
   void *res;
-  __pre_gc;
 
   push_extra_root(&p);
   push_extra_root(&q);
   res = Bsexp(BOX(3), p, q, LtagHash("cons"));   //BOX(848787));
   pop_extra_root(&q);
   pop_extra_root(&p);
-
-  __post_gc;
 
   return res;
 }
@@ -531,7 +452,6 @@ extern int LmatchSubString (char *subj, char *patt, int pos) {
 extern void *Lsubstring (void *subj, int p, int l) {
   data *d  = TO_DATA(subj);
   int   pp = UNBOX(p), ll = UNBOX(l);
-  __pre_gc;
 
   ASSERT_STRING("substring:1", subj);
   ASSERT_UNBOXED("substring:2", p);
@@ -546,7 +466,6 @@ extern void *Lsubstring (void *subj, int p, int l) {
 
     strncpy(r->contents, (char *)subj + pp, ll);
 
-    __post_gc;
     return r->contents;
   }
 
@@ -594,7 +513,6 @@ void *Lclone (void *p) {
   sexp *sobj;
   void *res;
   int   n;
-  __pre_gc;
 #ifdef DEBUG_PRINT
   indent++;
   print_indent();
@@ -665,7 +583,6 @@ void *Lclone (void *p) {
   fflush(stdout);
 #endif
 
-  __post_gc;
 #ifdef DEBUG_PRINT
   print_indent();
   printf("Lclone ends2\n");
@@ -828,7 +745,6 @@ extern void *Belem (void *p, int i) {
 extern void *LmakeArray (int length) {
   data *r;
   int   n, *p;
-  __pre_gc;
 
   ASSERT_UNBOXED("makeArray:1", length);
 
@@ -838,26 +754,22 @@ extern void *LmakeArray (int length) {
   p = (int *)r->contents;
   while (n--) *p++ = BOX(0);
 
-  __post_gc;
   return r->contents;
 }
 
 extern void *LmakeString (int length) {
   int   n = UNBOX(length);
   data *r;
-  __pre_gc;
   ASSERT_UNBOXED("makeString", length);
 
   r = (data *)alloc_string(n);   // '\0' in the end of the string is taken into account
 
-  __post_gc;
   return r->contents;
 }
 
 extern void *Bstring (void *p) {
   int   n = strlen(p);
   void *s = NULL;
-  __pre_gc;
 
 #ifdef DEBUG_PRINT
   indent++;
@@ -880,13 +792,12 @@ extern void *Bstring (void *p) {
   fflush(stdout);
   indent--;
 #endif
-  __post_gc;
+
   return s;
 }
 
 extern void *Lstringcat (void *p) {
   void *s;
-  __pre_gc;
 
   /* ASSERT_BOXED("stringcat", p); */
   createStringBuf();
@@ -898,13 +809,11 @@ extern void *Lstringcat (void *p) {
 
   deleteStringBuf();
 
-  __post_gc;
   return s;
 }
 
 extern void *Lstring (void *p) {
   void *s = (void *)BOX(NULL);
-  __pre_gc;
 
   createStringBuf();
   printValue(p);
@@ -915,17 +824,16 @@ extern void *Lstring (void *p) {
 
   deleteStringBuf();
 
-  __post_gc;
   return s;
 }
 
 extern void *Bclosure (int bn, void *entry, ...) {
-  va_list args;
-  int     i, ai;
-  size_t *argss;
-  data   *r;
-  int     n = UNBOX(bn);
-  __pre_gc;
+  va_list       args;
+  int           i, ai;
+  size_t       *argss;
+  data         *r;
+  int           n = UNBOX(bn);
+  register int *ebp asm("ebp");
 
 #ifdef DEBUG_PRINT
   indent++;
@@ -957,17 +865,17 @@ extern void *Bclosure (int bn, void *entry, ...) {
   fflush(stdout);
   indent--;
 #endif
-  __post_gc;
+
   return r->contents;
 }
 
 extern void *Barray (int bn, ...) {
-  va_list args;
-  int     i, ai;
-  size_t *argss;
-  data   *r;
-  int     n = UNBOX(bn);
-  __pre_gc;
+  va_list       args;
+  int           i, ai;
+  size_t       *argss;
+  data         *r;
+  int           n = UNBOX(bn);
+  register int *ebp asm("ebp");
 
 #ifdef DEBUG_PRINT
   indent++;
@@ -996,7 +904,7 @@ extern void *Barray (int bn, ...) {
 #ifdef DEBUG_PRINT
   indent--;
 #endif
-  __post_gc;
+
   return r->contents;
 }
 
@@ -1005,15 +913,16 @@ extern memory_chunk heap;
 #endif
 
 extern void *Bsexp (int bn, ...) {
-  va_list args;
-  int     i;
-  int     ai;
-  size_t *p;
-  sexp   *r;
-  data   *d;
-  int     n = UNBOX(bn);
-  size_t *argss;
-  __pre_gc;
+  va_list       args;
+  int           i;
+  int           ai;
+  size_t       *p;
+  sexp         *r;
+  data         *d;
+  int           n = UNBOX(bn);
+  size_t       *argss;
+  register int *ebp asm("ebp");
+
 #ifdef DEBUG_PRINT
   indent++;
   print_indent();
@@ -1057,7 +966,6 @@ extern void *Bsexp (int bn, ...) {
 
   va_end(args);
 
-  __post_gc;
   return d->contents;
 }
 
@@ -1190,7 +1098,6 @@ extern void * /*Lstrcat*/ Li__Infix_4343 (void *a, void *b) {
   data *da = (data *)BOX(NULL);
   data *db = (data *)BOX(NULL);
   data *d  = (data *)BOX(NULL);
-  __pre_gc;
 
   ASSERT_STRING("++:1", a);
   ASSERT_STRING("++:2", b);
@@ -1214,14 +1121,12 @@ extern void * /*Lstrcat*/ Li__Infix_4343 (void *a, void *b) {
 
   d->contents[LEN(da->data_header) + LEN(db->data_header)] = 0;
 
-  __post_gc;
   return d->contents;
 }
 
 extern void *Lsprintf (char *fmt, ...) {
   va_list args;
   void   *s;
-  __pre_gc;
 
   ASSERT_STRING("sprintf:1", fmt);
 
@@ -1238,20 +1143,17 @@ extern void *Lsprintf (char *fmt, ...) {
 
   deleteStringBuf();
 
-  __post_gc;
   return s;
 }
 
 extern void *LgetEnv (char *var) {
   char *e = getenv(var);
   void *s;
-  __pre_gc;
 
   if (e == NULL) return (void *)BOX(0);   // TODO add (void*) cast?
 
   s = Bstring(e);
 
-  __post_gc;
   return s;
 }
 
@@ -1433,7 +1335,6 @@ extern void set_args (int argc, char *argv[]) {
   data *a;
   int   n = argc, *p = NULL;
   int   i;
-  __pre_gc;
 
 #ifdef DEBUG_PRINT
   indent++;
@@ -1472,7 +1373,6 @@ extern void set_args (int argc, char *argv[]) {
   fflush(stdout);
   indent--;
 #endif
-  __post_gc;
 }
 
 /* GC starts here */
