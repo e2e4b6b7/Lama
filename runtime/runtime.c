@@ -12,7 +12,7 @@
 #  define alloc malloc
 #endif
 
-//# define DEBUG_PRINT 1
+//# define DEBUG_VERSION 1
 
 /* end */
 
@@ -77,7 +77,7 @@ extern int LcompareTags (void *p, void *q) {
 
   if (TAG(pd->data_header) == SEXP_TAG && TAG(qd->data_header) == SEXP_TAG) {
     return
-#ifndef DEBUG_PRINT
+#ifndef DEBUG_VERSION
         BOX((TO_SEXP(p)->tag) - (TO_SEXP(q)->tag));
 #else
         BOX((GET_SEXP_TAG(TO_SEXP(p)->data_header)) - (GET_SEXP_TAG(TO_SEXP(p)->data_header)));
@@ -242,7 +242,7 @@ char *de_hash (int n) {
   char       *p      = (char *)BOX(NULL);
   p                  = &buf[5];
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent++;
   print_indent();
   printf("de_hash: data_header: %d\n", n);
@@ -252,7 +252,7 @@ char *de_hash (int n) {
   *p-- = 0;
 
   while (n != 0) {
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
     print_indent();
     printf("char: %c\n", chars[n & 0x003F]);
     fflush(stdout);
@@ -261,7 +261,7 @@ char *de_hash (int n) {
     n    = n >> 6;
   }
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent--;
 #endif
 
@@ -513,7 +513,7 @@ void *Lclone (void *p) {
   sexp *sobj;
   void *res;
   int   n;
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent++;
   print_indent();
   printf("Lclone arg: %p %p\n", &p, p);
@@ -528,13 +528,13 @@ void *Lclone (void *p) {
     push_extra_root(&p);
     switch (t) {
       case STRING_TAG:
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
         print_indent();
         printf("Lclone: string1 &p=%p p=%p\n", &p, p);
         fflush(stdout);
 #endif
         res = Bstring(TO_DATA(p)->contents);
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
         print_indent();
         printf("Lclone: string2 %p %p\n", &p, p);
         fflush(stdout);
@@ -542,7 +542,7 @@ void *Lclone (void *p) {
         break;
 
       case ARRAY_TAG:
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
         print_indent();
         printf("Lclone: array &p=%p p=%p ebp=%p\n", &p, p, ebp);
         fflush(stdout);
@@ -552,7 +552,7 @@ void *Lclone (void *p) {
         res = (void *)obj->contents;
         break;
       case CLOSURE_TAG:
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
         print_indent();
         printf("Lclone: closure &p=%p p=%p ebp=%p\n", &p, p, ebp);
         fflush(stdout);
@@ -563,7 +563,7 @@ void *Lclone (void *p) {
         break;
 
       case SEXP_TAG:
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
         print_indent();
         printf("Lclone: sexp\n");
         fflush(stdout);
@@ -577,13 +577,13 @@ void *Lclone (void *p) {
     }
     pop_extra_root(&p);
   }
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   print_indent();
   printf("Lclone ends1\n");
   fflush(stdout);
 #endif
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   print_indent();
   printf("Lclone ends2\n");
   fflush(stdout);
@@ -627,7 +627,7 @@ int inner_hash (int depth, unsigned acc, void *p) {
       case ARRAY_TAG: i = 0; break;
 
       case SEXP_TAG: {
-#ifndef DEBUG_PRINT
+#ifndef DEBUG_VERSION
         int ta = TO_SEXP(p)->tag;
 #else
         int ta = GET_SEXP_TAG(TO_SEXP(p)->data_header);
@@ -701,7 +701,7 @@ extern int Lcompare (void *p, void *q) {
             break;
 
           case SEXP_TAG: {
-#ifndef DEBUG_PRINT
+#ifndef DEBUG_VERSION
             int ta = TO_SEXP(p)->tag, tb = TO_SEXP(q)->tag;
 #else
             int ta = GET_SEXP_TAG(TO_SEXP(p)->data_header),
@@ -771,7 +771,7 @@ extern void *Bstring (void *p) {
   int   n = strlen(p);
   void *s = NULL;
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent++;
   print_indent();
   printf("Bstring: call LmakeString %s %p %p %p %i\n", p, &p, p, s, n);
@@ -780,13 +780,13 @@ extern void *Bstring (void *p) {
   push_extra_root(&p);
   s = LmakeString(BOX(n));
   pop_extra_root(&p);
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   print_indent();
   printf("\tBstring: call strncpy: %p %p %p %i\n", &p, p, s, n);
   fflush(stdout);
 #endif
   strncpy((char *)&TO_DATA(s)->contents, p, n + 1);   // +1 because of '\0' in the end of C-strings
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   print_indent();
   printf("\tBstring: ends\n");
   fflush(stdout);
@@ -835,7 +835,7 @@ extern void *Bclosure (int bn, void *entry, ...) {
   int           n = UNBOX(bn);
   register int *ebp asm("ebp");
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent++;
   print_indent();
   printf("Bclosure: create n = %d\n", n);
@@ -859,7 +859,7 @@ extern void *Bclosure (int bn, void *entry, ...) {
   argss--;
   for (i = 0; i < n; i++, argss--) { pop_extra_root((void **)argss); }
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   print_indent();
   printf("Bclosure: ends\n", n);
   fflush(stdout);
@@ -877,7 +877,7 @@ extern void *Barray (int bn, ...) {
   int           n = UNBOX(bn);
   register int *ebp asm("ebp");
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent++;
   print_indent();
   printf("Barray: create n = %d\n", n);
@@ -901,7 +901,7 @@ extern void *Barray (int bn, ...) {
   argss--;
   for (i = 0; i < n; i++, argss--) { pop_extra_root((void **)argss); }
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent--;
 #endif
 
@@ -923,7 +923,7 @@ extern void *Bsexp (int bn, ...) {
   size_t       *argss;
   register int *ebp asm("ebp");
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent++;
   print_indent();
   printf("Bsexp: allocate %zu!\n", sizeof(int) * (n + 1));
@@ -953,7 +953,7 @@ extern void *Bsexp (int bn, ...) {
 
   r->tag = UNBOX(va_arg(args, int));
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   r->data_header = SEXP_TAG | ((r->data_header) << 3);
   print_indent();
   printf("Bsexp: ends\n");
@@ -975,7 +975,7 @@ extern int Btag (void *d, int t, int n) {
   if (UNBOXED(d)) return BOX(0);
   else {
     r = TO_DATA(d);
-#ifndef DEBUG_PRINT
+#ifndef DEBUG_VERSION
     return BOX(TAG(r->data_header) == SEXP_TAG && TO_SEXP(d)->tag == UNBOX(t)
                && LEN(r->data_header) == UNBOX(n));
 #else
@@ -1336,7 +1336,7 @@ extern void set_args (int argc, char *argv[]) {
   int   n = argc, *p = NULL;
   int   i;
 
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   indent++;
   print_indent();
   printf("set_args: call: n=%i &p=%p p=%p: ", n, &p, p);
@@ -1349,13 +1349,13 @@ extern void set_args (int argc, char *argv[]) {
   push_extra_root((void **)&p);
 
   for (i = 0; i < n; i++) {
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
     print_indent();
     printf("set_args: iteration %i %p %p ->\n", i, &p, p);
     fflush(stdout);
 #endif
     ((int *)p)[i] = (int)Bstring(argv[i]);
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
     print_indent();
     printf("set_args: iteration %i <- %p %p\n", i, &p, p);
     fflush(stdout);
@@ -1367,7 +1367,7 @@ extern void set_args (int argc, char *argv[]) {
   global_sysargs = p;
 
   push_extra_root((void **)&global_sysargs);
-#ifdef DEBUG_PRINT
+#ifdef DEBUG_VERSION
   print_indent();
   printf("set_args: end\n", n, &p, p);
   fflush(stdout);

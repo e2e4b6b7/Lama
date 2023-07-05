@@ -70,7 +70,7 @@ extern void
     __gc_root_scan_stack (void);   // TODO: write without ASM, since it is absolutely not necessary
 // marks each pointer from extra roots
 void scan_extra_roots (void);
-#ifndef DEBUG_VERSION
+#ifdef LAMA_ENV
 // marks each valid pointer from global area
 void scan_global_area (void);
 #endif
