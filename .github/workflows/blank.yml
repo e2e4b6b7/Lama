@@ -19,7 +19,8 @@ jobs:
 #          - "4.11.1"
           # - 4.10.x
           # - 4.11.x
-          - 4.13.1
+          # - 4.13.1
+          - 4.14.0
 
     runs-on: ${{ matrix.os }}
 
@@ -36,8 +37,5 @@ jobs:
       - run: opam depext Lama.dev --yes --with-test
       - run: opam install . --deps-only --with-test
       - run: eval $(opam env)
-      - run: opam install dune
-      - run: eval $(opam env)
-      - run: opam list
       - run: opam exec -- make #dune build
       - run: opam exec -- make regression # dune runtest
