@@ -86,14 +86,24 @@ static void print_object_info (FILE *f, void *obj_content) {
 
 static void print_unboxed (FILE *f, int unboxed) { fprintf(f, "unboxed %zu | ", unboxed); }
 
-static FILE *print_stack_content (char *filename) {
-  FILE *f = fopen(filename, "w+");
+static void print_extra_roots (char *filename) {
+  FILE *f = fopen(filename, "w");
   ftruncate(fileno(f), 0);
-  fprintf(f, "Stack content:\n");
-  for (size_t *stack_ptr = (size_t *)((void *)__gc_stack_top);
-       stack_ptr < (size_t *)__gc_stack_bottom;
-       ++stack_ptr) {
-    size_t value = *stack_ptr;
+  fprintf(f, "Extra roots content:\n");
+  for (int i = 0; i < extra_roots.current_free; i++) {
+    size_t value = *(size_t **)extra_roots.roots[i];
+    if (is_valid_heap_pointer((size_t *)value)) {
+      print_object_info(f, (void *)value);
+    } else {
+      print_unboxed(f, (int)value);
+    }
+  }
+  fclose(f);
+}
+
+static void print_memory_area_content (const size_t *begin, const size_t *end, FILE *f) {
+  for (size_t *ptr = (size_t *)begin; ptr < end; ++ptr) {
+    size_t value = *ptr;
     if (is_valid_heap_pointer((size_t *)value)) {
       print_object_info(f, (void *)value);
     } else {
@@ -101,20 +111,36 @@ static FILE *print_stack_content (char *filename) {
     }
     fprintf(f, "\n");
   }
+}
+
+static void print_data_content (char *filename) {
+  FILE *f = fopen(filename, "w");
+  ftruncate(fileno(f), 0);
+  fprintf(f, "Data content:\n");
+  print_memory_area_content((size_t *)__start_custom_data, (size_t *)__stop_custom_data, f);
+  fprintf(f, "Data content end.\n");
+  fclose(f);
+}
+
+static void print_stack_content (char *filename) {
+  FILE *f = fopen(filename, "w");
+  ftruncate(fileno(f), 0);
+  fprintf(f, "Stack content:\n");
+  print_memory_area_content((size_t *)__gc_stack_top, (size_t *)__gc_stack_bottom, f);
   fprintf(f, "Stack content end.\n");
-  fflush(f);
-  return f;
+  fclose(f);
 }
 
 // precondition: obj_content is a valid address pointing to the content of an object
 static void objects_dfs (FILE *f, void *obj_content) {
+#  define DFS_BIT 0b10   // define bit which states that that object is already dumped
   void *obj_header = get_obj_header_ptr(obj_content);
   data *obj_data   = TO_DATA(obj_content);
   // internal mark-bit for this dfs, should be recovered by the caller
-  if ((obj_data->forward_address & 2) != 0) { return; }
+  if ((obj_data->forward_address & DFS_BIT) != 0) { return; }
   // set this bit as 1
-  obj_data->forward_address |= 2;
-  fprintf(f, "object at addr %p: ", obj_content);
+  obj_data->forward_address |= DFS_BIT;
+  // fprintf(f, "object at addr %p: ", obj_content);
   print_object_info(f, obj_content);
   // first cycle: print object's fields
   for (obj_field_iterator field_it = ptr_field_begin_iterator(obj_header);
@@ -136,7 +162,7 @@ static void objects_dfs (FILE *f, void *obj_content) {
   }
 }
 
-FILE *print_objects_traversal (char *filename, bool marked) {
+static void print_objects_traversal (char *filename, bool marked) {
   FILE *f = fopen(filename, "w+");
   if (f == NULL) {
     fprintf(stderr, "ERROR: print_objects_traversal: fopen error: %d\n", errno);
@@ -159,26 +185,55 @@ FILE *print_objects_traversal (char *filename, bool marked) {
     data *obj_data   = TO_DATA(get_object_content_ptr(obj_header));
     obj_data->forward_address &= (~2);
   }
-  // print extra roots
-  for (int i = 0; i < extra_roots.current_free; i++) {
-    fprintf(f, "extra root %p %p: ", extra_roots.roots[i], *(size_t **)extra_roots.roots[i]);
-  }
-  fflush(f);
-  return f;
+  fclose(f);
 }
 
-int files_cmp (FILE *f1, FILE *f2) {
-  int symbol1, symbol2;
-  int position = 0;
+// int files_cmp (FILE *f1, FILE *f2) {
+int files_cmp (const char *f1_name, const char *f2_name) {
+  FILE *f1 = fopen(f1_name, "r"), *f2 = fopen(f2_name, "r");
+  int   symbol1 = 0, symbol2 = 0, position = 0;
   while (true) {
     symbol1 = fgetc(f1);
     symbol2 = fgetc(f2);
-    if (symbol1 == EOF && symbol2 == EOF) { return -1; }
-    if (symbol1 != symbol2) { return position; }
+    if (symbol1 == EOF && symbol2 == EOF) {
+      position = -1;
+      goto files_cmp_exit;
+    }
+    if (symbol1 != symbol2) { goto files_cmp_exit; }
     ++position;
   }
+files_cmp_exit:
+  fclose(f1);
+  fclose(f2);
+  return position;
 }
 
+#  define NUMBER_OF_DUMP_FILES 4
+static const char *dump_files[2][NUMBER_OF_DUMP_FILES] = {
+    {"stack-dump-before", "data-dump-before", "extra-roots-dump-before", "heap-dump-before"},
+    {"stack-dump-after", "data-dump-after", "extra-roots-dump-after", "heap-dump-after"}};
+static const char *dump_files_compare_errors[NUMBER_OF_DUMP_FILES] = {
+    "Stack is modified incorrectly, see position %d\n",
+    "GC invariant is broken, pos is %d\n",
+    "extra roots: invariant is broken, pos is %d\n",
+    "data area: invariant is broken, pos is %d\n"};
+
+void memory_dump (const bool flag) {
+  print_stack_content(dump_files[flag][0]);
+  print_data_content(dump_files[flag][1]);
+  print_extra_roots(dump_files[flag][2]);
+  print_objects_traversal(dump_files[flag][3], flag);
+}
+
+void compare_dumps_before_and_after (void) {
+  for (int i = 0; i < NUMBER_OF_DUMP_FILES; ++i) {
+    int pos = files_cmp(dump_files[0][i], dump_files[1][i]);
+    if (pos >= 0) {   // position of difference is found
+      fprintf(stderr, dump_files_compare_errors[i], pos);
+      exit(1);
+    }
+  }
+}
 #endif
 
 void *gc_alloc_on_existing_heap (size_t size) {
@@ -199,36 +254,14 @@ extern void gc_alloc (size_t size) {
           __gc_stack_top,
           __gc_stack_bottom);
 #endif
-#ifdef FULL_INVARIANT_CHECKS
-  FILE *stack_before = print_stack_content("stack-dump-before-compaction");
-  FILE *heap_before  = print_objects_traversal("before-mark", 0);
-  fclose(heap_before);
-  fclose(stack_before);
-#endif
   mark_phase();
 #ifdef FULL_INVARIANT_CHECKS
-  FILE *heap_before_compaction = print_objects_traversal("after-mark", 1);
+  memory_dump(true);
 #endif
-
   compact_phase(size);
 #ifdef FULL_INVARIANT_CHECKS
-  FILE *stack_after           = print_stack_content("stack-dump-after-compaction");
-  FILE *heap_after_compaction = print_objects_traversal("after-compaction", 0);
-
-  int pos = files_cmp(stack_before, stack_after);
-  if (pos >= 0) {   // position of difference is found
-    fprintf(stderr, "Stack is modified incorrectly, see position %d\n", pos);
-    exit(1);
-  }
-  pos = files_cmp(heap_before_compaction, heap_after_compaction);
-  if (pos >= 0) {   // position of difference is found
-    fprintf(stderr, "GC invariant is broken, pos is %d\n", pos);
-    exit(1);
-  }
-
-  fclose(heap_before_compaction);
-  fclose(heap_after_compaction);
-  fclose(stack_after);
+  memory_dump(false);
+  compare_dumps_before_and_after();
 #endif
 #ifdef DEBUG_VERSION
   fprintf(stderr,
@@ -791,11 +824,9 @@ lama_type get_type_header_ptr (void *ptr) {
               cur_id,
               __gc_stack_top,
               __gc_stack_bottom);
-      FILE *heap_before_compaction = print_objects_traversal("dump_kill", 1);
-      close(heap_before_compaction);
+      print_objects_traversal("dump_kill", 1);
       kill(getpid(), SIGSEGV);
 #endif
-
       exit(1);
     }
   }

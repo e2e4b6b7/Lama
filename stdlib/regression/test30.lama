@@ -25,8 +25,8 @@ fun genCyclicArrays (n, eq, cross) {
       esac           
     else
       var a     = split (n, random (n+1)),
-            b     = mapArray (id, a),
-            index = initArray (random (a.length + 1), fun (_) {random (a.length)});
+          b     = mapArray (id, a),
+          index = initArray (random (a.length + 1), fun (_) {random (a.length)});
       
       fun shared (i)  {
         var found = false;
