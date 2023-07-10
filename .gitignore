@@ -4,4 +4,4 @@
 *.cmo
 *.o
 .merlin
-
+.vscode
