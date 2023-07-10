@@ -331,8 +331,7 @@ let compile cmd env imports code =
               Mov (x, eax);
               Binop("&&", L(1), eax);
               Binop("cmp", L(0), eax);
-              CJmp ("z", "_ERROR")]
-              | _ -> []) @
+              CJmp ("z", "_ERROR")]) @
              (match op with
 	      | "/" ->
                  [Mov (y, eax);
@@ -418,6 +417,7 @@ let compile cmd env imports code =
                  if on_stack x && on_stack y
                  then [Mov   (x, eax); Binop (op, eax, y); Or1 y]
                  else [Binop (op, x, y); Or1 y]
+        | _ -> failwith (Printf.sprintf "Unexpected pattern: %s: %d" __FILE__ __LINE__)
              )
              
           | LABEL  s 
@@ -568,6 +568,7 @@ let compile cmd env imports code =
                 | String  -> ".string_tag_patt"
                 | Sexp    -> ".sexp_tag_patt"
                 | Closure -> ".closure_tag_patt"
+                | StrCmp -> failwith (Printf.sprintf "Unexpected pattern: StrCmp %s: %d" __FILE__ __LINE__)
                ) 1 false
           | LINE (line) ->
              env#gen_line line
@@ -594,8 +595,8 @@ module M = Map.Make (String)
 (* Environment implementation *)
 class env prg =
   let chars          = "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'" in
-  let make_assoc l i = List.combine l (List.init (List.length l) (fun x -> x + i)) in
-  let rec assoc  x   = function [] -> raise Not_found | l :: ls -> try List.assoc x l with Not_found -> assoc x ls in
+  (* let make_assoc l i = List.combine l (List.init (List.length l) (fun x -> x + i)) in
+  let rec assoc  x   = function [] -> raise Not_found | l :: ls -> try List.assoc x l with Not_found -> assoc x ls in *)
   object (self)
     inherit SM.indexer prg
     val globals         = S.empty (* a set of global variables         *)
@@ -708,20 +709,20 @@ class env prg =
     method push y = {< stack = y::stack >}
 
     (* pops one operand from the symbolic stack *)
-    method pop = let x::stack' = stack in x, {< stack = stack' >}
+    method pop = let [@ocaml.warning "-8"] x::stack' = stack in x, {< stack = stack' >}
 
     (* pops two operands from the symbolic stack *)
-    method pop2 = let x::y::stack' = stack in x, y, {< stack = stack' >}
+    method pop2 = let [@ocaml.warning "-8"] x::y::stack' = stack in x, y, {< stack = stack' >}
 
     (* peeks the top of the stack (the stack does not change) *)
     method peek = List.hd stack
 
     (* peeks two topmost values from the stack (the stack itself does not change) *)
-    method peek2 = let x::y::_ = stack in x, y
+    method peek2 = let [@ocaml.warning "-8"] x::y::_ = stack in x, y
 
     (* tag hash: gets a hash for a string tag *)
     method hash tag =
-      let h = Pervasives.ref 0 in
+      let h = Stdlib.ref 0 in
       for i = 0 to min (String.length tag - 1) 4 do
         h := (!h lsl 6) lor (String.index chars tag.[i])
       done;

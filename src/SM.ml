@@ -123,7 +123,7 @@ module ByteCode =
  *)
 
     let compile cmd insns =
-      let word_size          = 4                                                                                   in
+      (* let word_size          = 4                                                                                   in *)
       let code               = Buffer.create 256                                                                   in
       let st                 = StringTab.create ()                                                                 in
       let lmap               = Stdlib.ref M.empty                                                                  in
@@ -159,6 +159,7 @@ module ByteCode =
                    | Value.Local  n -> add_bytes [b 1]; add_ints    [n]
                    | Value.Arg    n -> add_bytes [b 2]; add_ints    [n]
                    | Value.Access n -> add_bytes [b 3]; add_ints    [n]
+                   | _ -> failwith (Printf.sprintf "Unexpected pattern: %s: %d" __FILE__ __LINE__)
           )
       in
       let insn_code = function
@@ -208,6 +209,7 @@ module ByteCode =
                                  | EXTERN  s                   -> ()
                                  | PUBLIC  s                   -> add_public s
                                  | IMPORT  s                   -> add_import s
+                                 | _ -> failwith (Printf.sprintf "Unexpected pattern: %s: %d" __FILE__ __LINE__)
       in
       List.iter insn_code insns;
       add_bytes [255];
@@ -272,7 +274,7 @@ type config = control * stack * global * local * int list * int list
 let split n l =
   let rec unzip (taken, rest) = function
   | 0 -> (List.rev taken, rest)
-  | n -> let h::tl = rest in unzip (h::taken, tl) (n-1)
+  | n -> let [@ocaml.warning "-8"] h::tl = rest in unzip (h::taken, tl) (n-1)
   in
   unzip ([], l) n
 
@@ -281,6 +283,7 @@ let update glob loc z = function
 | Value.Local  i -> loc.locals.(i) <- z; glob
 | Value.Arg    i -> loc.args.(i) <- z; glob
 | Value.Access i -> loc.closure.(i) <- z; glob 
+| _ -> failwith (Printf.sprintf "Unexpected pattern: %s: %d" __FILE__ __LINE__)
 
 let print_stack memo s =
   Printf.eprintf "Memo %!";
@@ -289,7 +292,7 @@ let print_stack memo s =
 
 let show_insn = show insn
               
-let rec eval env (((cstack, stack, glob, loc, i, o) as conf) : config) = function
+let [@ocaml.warning "-8-20"] rec eval env (((cstack, stack, glob, loc, i, o) as conf) : config) = function
 | [] -> conf
 | insn :: prg' ->
    (*
@@ -443,7 +446,7 @@ let run p i =
     eval
       object
          inherit indexer p
-         method builtin f args ((cstack, stack, glob, loc, i, o) as conf : config) = 
+         method [@ocaml.warning "-8"] builtin f args ((cstack, stack, glob, loc, i, o) : config) = 
            let f = match f.[0] with 'L' -> String.sub f 1 (String.length f - 1) | _ -> f in
            let (st, i, o, r) = Language.Builtin.eval (State.I, i, o, []) (List.map Obj.magic @@ List.rev args) f in
            (cstack, (match r with [r] -> (Obj.magic r)::stack | _ -> Value.Empty :: stack), glob, loc, i, o)
@@ -516,7 +519,7 @@ let open_scope c fd =
   | Item (p, fds, up) ->
      Item (fd, [], Item ({p with scope = fd.scope}, fds, up))
                     
-let close_scope (Item (f, [], c)) = c
+let [@ocaml.warning "-8"] close_scope (Item (f, [], c)) = c
                    
 let add_fun c fd =
   match c with
@@ -532,7 +535,7 @@ let rec pick = function
 
 let top = function Item (p, _, _) -> Some p | _ -> None
 
-let rec propagate_acc (Item (p, fds, up) as item) name =
+let [@ocaml.warning "-8"] rec propagate_acc (Item (p, fds, up) as item) name =
   match State.eval p.scope.st name with
   | Value.Access n when n = ~-1 ->
      let index    = p.scope.acc_index     in
@@ -545,13 +548,13 @@ let rec propagate_acc (Item (p, fds, up) as item) name =
            }}, fds, up'), Value.Access index       
   | other -> item, other
 
-module FC = Map.Make (struct type t = string * string let compare = Pervasives.compare end)
+module FC = Map.Make (struct type t = string * string let compare = Stdlib.compare end)
 
 class funinfo =
 object (self : 'self)
-  val funtree      = (Pervasives.ref M.empty  : string M.t ref)
-  val closures     = (Pervasives.ref M.empty  : Value.designation list M.t ref)
-  val functx       = (Pervasives.ref FC.empty : Value.designation list FC.t ref)
+  val funtree      = (Stdlib.ref M.empty  : string M.t ref)
+  val closures     = (Stdlib.ref M.empty  : Value.designation list M.t ref)
+  val functx       = (Stdlib.ref FC.empty : Value.designation list FC.t ref)
 
   method show_funinfo =
     Printf.sprintf "funtree: %s\nclosures: %s\ncontexts: %s\n"
@@ -580,14 +583,14 @@ object (self : 'self)
       else find_path (self#get_parent current) @ [current] 
     in
     let path    = find_path c in
-    let changed = Pervasives.ref false in
+    let changed = Stdlib.ref false in
     let rec propagate_downwards current_closure = function
     | []      -> current_closure
     | f :: tl ->
        let fclosure = self#get_closure f                    in
-       let delta    = Pervasives.ref fclosure               in
-       let index    = Pervasives.ref (List.length fclosure) in
-       let added    = Pervasives.ref false                  in
+       let delta    = Stdlib.ref fclosure               in
+       let index    = Stdlib.ref (List.length fclosure) in
+       let added    = Stdlib.ref false                  in
        let add_to_closure loc =
          added  := true;
          delta  := !delta @ [loc];
@@ -627,7 +630,7 @@ object (self : 'self)
     
 end
   
-class env cmd imports =
+class [@ocaml.warning "-15"] env cmd imports =
 object (self : 'self)
   val label_index  = 0
   val scope_index  = 0
@@ -733,6 +736,7 @@ object (self : 'self)
            scopes      = match scope.scopes with
                            [_]            -> scope.scopes
                          | hs :: ps :: tl -> {ps with subs = hs :: ps.subs} :: tl
+                         | _ -> failwith (Printf.sprintf "Unexpected pattern: %s: %d" __FILE__ __LINE__)
          }
        >}
 
@@ -949,7 +953,7 @@ let compile cmd ((imports, infixes), p) =
      let env, flag1, s1 = compile_expr false les env e  in
      let env, flag2, s2 = compile_list tail  l   env es in
      add_code (env, flag1, s1) les flag2 s2
-  and compile_expr tail l env = function
+  and [@ocaml.warning "-8"] compile_expr tail l env = function
   | Expr.Lambda (args, b) ->
      let env, lines = List.fold_left (fun (env, acc) name -> let env, ln = env#gen_line name in env, acc @ ln) (env, []) args in 
      let env, name  = env#add_lambda args b in
@@ -1123,6 +1127,7 @@ let compile cmd ((imports, infixes), p) =
        (match state with
         | None :: state'   -> CALLC (n, tail)  :: inner state' tl
         | Some f :: state' -> CALL (f, n, tail) :: inner state' tl
+        | _ -> failwith (Printf.sprintf "Unexpected pattern: %s: %d" __FILE__ __LINE__)
        )
     | insn :: tl -> insn :: inner state tl
     in
