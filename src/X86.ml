@@ -866,13 +866,15 @@ let build cmd prog =
   cmd#dump_file "s" (genasm cmd prog);
   cmd#dump_file "i" (Interface.gen prog);
   let inc  = get_std_path () in
+  let compiler = "gcc" in 
+  let flags = "-no-pie -m32" in
   match cmd#get_mode with
   | `Default ->
      let objs = find_objects (fst @@ fst prog) cmd#get_include_paths in
      let buf  = Buffer.create 255 in
      List.iter (fun o -> Buffer.add_string buf o; Buffer.add_string buf " ") objs;
-     let gcc_cmdline = Printf.sprintf "gcc %s -m32 %s %s.s %s %s/runtime.a" cmd#get_debug cmd#get_output_option cmd#basename (Buffer.contents buf) inc in
+     let gcc_cmdline = Printf.sprintf "%s %s %s %s %s.s %s %s/runtime.a" compiler flags cmd#get_debug cmd#get_output_option cmd#basename (Buffer.contents buf) inc in
      Sys.command gcc_cmdline
   | `Compile ->
-     Sys.command (Printf.sprintf "gcc %s -m32 -c %s.s" cmd#get_debug cmd#basename)
+     Sys.command (Printf.sprintf "%s %s %s -c %s.s" compiler flags cmd#get_debug cmd#basename)
   | _ -> invalid_arg "must not happen"

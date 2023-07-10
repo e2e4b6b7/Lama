@@ -5,6 +5,7 @@
 #include "runtime_common.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <execinfo.h>
 #include <signal.h>
 #include <stdio.h>
@@ -137,6 +138,10 @@ static void objects_dfs (FILE *f, void *obj_content) {
 
 FILE *print_objects_traversal (char *filename, bool marked) {
   FILE *f = fopen(filename, "w+");
+  if (f == NULL) {
+    fprintf(stderr, "ERROR: print_objects_traversal: fopen error: %d\n", errno);
+    exit(errno);
+  }
   ftruncate(fileno(f), 0);
   for (heap_iterator it = heap_begin_iterator(); !heap_is_done_iterator(&it);
        heap_next_obj_iterator(&it)) {
@@ -195,47 +200,48 @@ extern void gc_alloc (size_t size) {
           __gc_stack_bottom);
 #endif
 #ifdef FULL_INVARIANT_CHECKS
- FILE *stack_before = print_stack_content("stack-dump-before-compaction");
- FILE *heap_before  = print_objects_traversal("before-mark", 0);
- fclose(heap_before);
- fclose(stack_before);
+  FILE *stack_before = print_stack_content("stack-dump-before-compaction");
+  FILE *heap_before  = print_objects_traversal("before-mark", 0);
+  fclose(heap_before);
+  fclose(stack_before);
 #endif
   mark_phase();
 #ifdef FULL_INVARIANT_CHECKS
-   FILE *heap_before_compaction = print_objects_traversal("after-mark", 1);
+  FILE *heap_before_compaction = print_objects_traversal("after-mark", 1);
 #endif
 
   compact_phase(size);
 #ifdef FULL_INVARIANT_CHECKS
-   FILE *stack_after           = print_stack_content("stack-dump-after-compaction");
-   FILE *heap_after_compaction = print_objects_traversal("after-compaction", 0);
+  FILE *stack_after           = print_stack_content("stack-dump-after-compaction");
+  FILE *heap_after_compaction = print_objects_traversal("after-compaction", 0);
 
-   int pos = files_cmp(stack_before, stack_after);
-   if (pos >= 0) {   // position of difference is found
-     fprintf(stderr, "Stack is modified incorrectly, see position %d\n", pos);
-     exit(1);
-   }
-   pos = files_cmp(heap_before_compaction, heap_after_compaction);
-   if (pos >= 0) {   // position of difference is found
-     fprintf(stderr, "GC invariant is broken, pos is %d\n", pos);
-     exit(1);
-   }
+  int pos = files_cmp(stack_before, stack_after);
+  if (pos >= 0) {   // position of difference is found
+    fprintf(stderr, "Stack is modified incorrectly, see position %d\n", pos);
+    exit(1);
+  }
+  pos = files_cmp(heap_before_compaction, heap_after_compaction);
+  if (pos >= 0) {   // position of difference is found
+    fprintf(stderr, "GC invariant is broken, pos is %d\n", pos);
+    exit(1);
+  }
 
-   fclose(heap_before_compaction);
-   fclose(heap_after_compaction);
+  fclose(heap_before_compaction);
+  fclose(heap_after_compaction);
+  fclose(stack_after);
 #endif
 #ifdef DEBUG_VERSION
-   fprintf(stderr,
-           "===============================GC cycle has finished\n"
-           "===============================gc_stack_top=%p bot=%p\n",
-           (void*)__gc_stack_top,
-           (void*)__gc_stack_bottom);
+  fprintf(stderr,
+          "===============================GC cycle has finished\n"
+          "===============================gc_stack_top=%p bot=%p\n",
+          (void *)__gc_stack_top,
+          (void *)__gc_stack_bottom);
 #endif
 }
 
 void gc_root_scan_stack (void) {
   for (size_t *p = (void *)__gc_stack_top; p <= (size_t *)__gc_stack_bottom; p++) {
-    gc_test_and_mark_root((size_t **) p);
+    gc_test_and_mark_root((size_t **)p);
   }
 }
 
@@ -359,10 +365,11 @@ void scan_and_fix_region_roots (memory_chunk *old_heap) {
   fprintf(stderr, "extra roots started: number os extra roots %i\n", extra_roots.current_free);
 #endif
   for (int i = 0; i < extra_roots.current_free; i++) {
-    size_t *ptr       = (size_t *) extra_roots.roots[i];
+    size_t *ptr       = (size_t *)extra_roots.roots[i];
     size_t  ptr_value = *ptr;
     // skip this one since it was already fixed from scanning the stack
-    if (extra_roots.roots[i] >= (void **)__gc_stack_top && extra_roots.roots[i] < (void **)__gc_stack_bottom) {
+    if (extra_roots.roots[i] >= (void **)__gc_stack_top
+        && extra_roots.roots[i] < (void **)__gc_stack_bottom) {
 #ifdef DEBUG_VERSION
       if (is_valid_heap_pointer((size_t *)ptr_value)) {
         fprintf(stderr,
@@ -453,7 +460,7 @@ void update_references (memory_chunk *old_heap) {
   // fix pointers from extra_roots
   scan_and_fix_region_roots(old_heap);
 
-#ifdef LAMA_ENV // since start/stop custom data are only available together with lama programs
+#ifdef LAMA_ENV   // since start/stop custom data are only available together with lama programs
   // fix pointers from static area
   assert((void *)&__stop_custom_data >= (void *)&__start_custom_data);
   scan_and_fix_region(old_heap, (void *)&__start_custom_data, (void *)&__stop_custom_data);
@@ -773,7 +780,7 @@ lama_type get_type_header_ptr (void *ptr) {
 #ifdef DEBUG_VERSION
       fprintf(stderr, "ERROR: get_type_header_ptr: unknown object header, cur_id=%d", cur_id);
       raise(SIGINT);   // only for debug purposes
-#else
+#elif FULL_INVARIANT_CHECKS
       fprintf(stderr,
               "ERROR: get_type_header_ptr: unknown object header, ptr is %p, tag %i, heap "
               "size is "
@@ -787,8 +794,8 @@ lama_type get_type_header_ptr (void *ptr) {
       FILE *heap_before_compaction = print_objects_traversal("dump_kill", 1);
       close(heap_before_compaction);
       kill(getpid(), SIGSEGV);
-
 #endif
+
       exit(1);
     }
   }
