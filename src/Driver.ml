@@ -184,7 +184,7 @@ class options args =
     method set_debug = debug := true
   end
 
-let main =
+let[@ocaml.warning "-32"] main =
   try
     let cmd = new options Sys.argv in
     cmd#greet;

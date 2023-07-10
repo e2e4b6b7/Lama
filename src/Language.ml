@@ -3,7 +3,7 @@
 *)
 module OrigList = List
 
-(* [@@@ocaml.warning "-7-8-13-15-20-26-27-32"] *)
+[@@@ocaml.warning "-7-8-13-15-20-26-27-32"]
 
 open GT
 

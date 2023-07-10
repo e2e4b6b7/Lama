@@ -58,14 +58,14 @@
  (preprocess
   (per_module
    ((pps GT.ppx_all)
-    SM)
+    SM
+    X86)
    ((action
      (run %{project_root}/src/pp5+gt+plugins+ostap+dump.byte %{input-file}))
     Language
     Pprinter
     stdpath
-    version
-    X86)))
+    version)))
  (preprocessor_deps
   (file %{project_root}/src/pp5+gt+plugins+ostap+dump.byte)
   ;(file %{project_root}/src/pp5+gt+plugins+ostap+dump.exe)

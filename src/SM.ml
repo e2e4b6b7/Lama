@@ -291,11 +291,11 @@ module ByteCode = struct
           add_ints [ 0; List.length ds ];
           add_designations None ds
       (* 0x55 n:32            *)
-      | CALLC (n, tail) ->
+      | CALLC (n, _) ->
           add_bytes [ (5 * 16) + 5 ];
           add_ints [ n ]
       (* 0x56 l:32 n:32       *)
-      | CALL (fn, n, tail) ->
+      | CALL (fn, n, _) ->
           add_bytes [ (5 * 16) + 6 ];
           add_fixup fn;
           add_ints [ 0; n ]
@@ -318,7 +318,7 @@ module ByteCode = struct
           add_ints [ n ]
       (* 0x6p                 *)
       | PATT p -> add_bytes [ (6 * 16) + enum patt p ]
-      | EXTERN s -> ()
+      | EXTERN _ -> ()
       | PUBLIC s -> add_public s
       | IMPORT s -> add_import s
       | _ ->
@@ -424,7 +424,7 @@ let update glob loc z = function
   | _ ->
       failwith (Printf.sprintf "Unexpected pattern: %s: %d" __FILE__ __LINE__)
 
-let print_stack memo s =
+let print_stack _ s =
   Printf.eprintf "Memo %!";
   List.iter (fun v -> Printf.eprintf "%s " @@ show value v) s;
   Printf.eprintf "\n%!"
@@ -757,7 +757,7 @@ class indexer prg =
 let run p i =
   let module M = Map.Make (String) in
   let glob = State.undefined in
-  let _, _, _, _, i, o =
+  let _, _, _, _, _, o =
     eval
       object
         inherit indexer p
@@ -768,7 +768,7 @@ let run p i =
             | 'L' -> String.sub f 1 (String.length f - 1)
             | _ -> f
           in
-          let st, i, o, r =
+          let _, i, o, r =
             Language.Builtin.eval (State.I, i, o, [])
               (List.map Obj.magic @@ List.rev args)
               f
@@ -854,14 +854,14 @@ let open_scope c fd =
   | Item (p, fds, up) ->
       Item (fd, [], Item ({ p with scope = fd.scope }, fds, up))
 
-let[@ocaml.warning "-8"] close_scope (Item (f, [], c)) = c
+let[@ocaml.warning "-8"] close_scope (Item (_, [], c)) = c
 
 let add_fun c fd =
   match c with
   | Top fds -> Top (fd :: fds)
   | Item (parent, fds, up) -> Item (parent, fd :: fds, up)
 
-let rec pick = function
+let[@ocaml.warning "-39"] rec pick = function
   | Item (parent, fd :: fds, up) -> (Item (parent, fds, up), Some fd)
   | Top (fd :: fds) -> (Top fds, Some fd)
   | c -> (c, None)
@@ -1251,7 +1251,7 @@ class env cmd imports =
 
     method next_definition =
       match pick fundefs with
-      | fds, None -> None
+      | _, None -> None
       | fds, Some fd -> Some ({<fundefs = fds>}, from_fundef fd)
 
     method closure = List.rev scope.closure
@@ -1266,7 +1266,7 @@ class env cmd imports =
           | _ -> (self, []))
   end [@@ocaml.warning "-15"]
 
-let compile cmd ((imports, infixes), p) =
+let compile cmd ((imports, _), p) =
   let rec pattern env lfalse = function
     | Pattern.Wildcard -> (env, false, [ DROP ])
     | Pattern.Named (_, p) -> pattern env lfalse p
@@ -1311,7 +1311,7 @@ let compile cmd ((imports, infixes), p) =
         in
         let code, env = pattern_list lhead ldrop env ps in
         (env, true, tag @ code @ [ DROP ])
-  and pattern_list lhead ldrop env ps =
+  and pattern_list _ ldrop env ps =
     let _, env, code =
       List.fold_left
         (fun (i, env, code) p ->
@@ -1329,10 +1329,10 @@ let compile cmd ((imports, infixes), p) =
         (fun fself ->
           object
             inherit [int list, _, (string * int list) list] Pattern.t_t
-            method c_Wildcard path _ = []
+            method c_Wildcard _ _ = []
             method c_Named path _ s p = [ (s, path) ] @ fself path p
 
-            method c_Sexp path _ x ps =
+            method c_Sexp path _ _ ps =
               List.concat @@ List.mapi (fun i p -> fself (path @ [ i ]) p) ps
 
             method c_UnBoxed _ _ = []
@@ -1578,7 +1578,7 @@ let compile cmd ((imports, infixes), p) =
           if fail then [ LABEL lfail; FAIL (loc, atr != Expr.Void); JMP l ]
           else [] )
   in
-  let rec compile_fundef env ((name, args, stmt, st) as fd) =
+  let rec compile_fundef env ((name, args, stmt, _) as fd) =
     (* Printf.eprintf "Compile fundef: %s, state=%s\n" name (show(State.t) (show(Value.designation)) st);                *)
     (* Printf.eprintf "st (inner) = %s\n" (try show(Value.designation) @@ State.eval st "inner" with _ -> " not found"); *)
     let blab, env = env#get_label in
@@ -1587,7 +1587,7 @@ let compile cmd ((imports, infixes), p) =
     (*Printf.eprintf "Lookup: %s\n%!" (try show(Value.designation) @@ snd (env#lookup "inner") with _ -> "no inner..."); *)
     let env = List.fold_left (fun env arg -> env#add_arg arg) env args in
     let lend, env = env#get_end_label in
-    let env, flag, code = compile_expr true lend env stmt in
+    let env, _, code = compile_expr true lend env stmt in
     let env, funcode = compile_fundefs [] env in
     (*Printf.eprintf "Function: %s, closure: %s\n%!" name (show(list) (show(Value.designation)) env#closure);*)
     let env = env#register_closure name in
