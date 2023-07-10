@@ -5,4 +5,4 @@ byterun.o: byterun.c
 	$(CC) -g -fstack-protector-all -m32 -c byterun.c
 
 clean:
-	$(RM) *.a *.o *~
+	$(RM) *.a *.o *~ byterun
