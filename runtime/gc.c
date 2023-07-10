@@ -91,7 +91,7 @@ static void print_extra_roots (char *filename) {
   ftruncate(fileno(f), 0);
   fprintf(f, "Extra roots content:\n");
   for (int i = 0; i < extra_roots.current_free; i++) {
-    size_t value = *(size_t **)extra_roots.roots[i];
+    size_t value = *(size_t *)extra_roots.roots[i];
     if (is_valid_heap_pointer((size_t *)value)) {
       print_object_info(f, (void *)value);
     } else {
@@ -209,10 +209,10 @@ files_cmp_exit:
 }
 
 #  define NUMBER_OF_DUMP_FILES 4
-static const char *dump_files[2][NUMBER_OF_DUMP_FILES] = {
+static char *dump_files[2][NUMBER_OF_DUMP_FILES] = {
     {"stack-dump-before", "data-dump-before", "extra-roots-dump-before", "heap-dump-before"},
     {"stack-dump-after", "data-dump-after", "extra-roots-dump-after", "heap-dump-after"}};
-static const char *dump_files_compare_errors[NUMBER_OF_DUMP_FILES] = {
+static char *dump_files_compare_errors[NUMBER_OF_DUMP_FILES] = {
     "Stack is modified incorrectly, see position %d\n",
     "GC invariant is broken, pos is %d\n",
     "extra roots: invariant is broken, pos is %d\n",
@@ -527,11 +527,11 @@ void physically_relocate (memory_chunk *old_heap) {
 #endif
 }
 
-bool is_valid_heap_pointer (const size_t *p) {
+inline bool is_valid_heap_pointer (const size_t *p) {
   return !UNBOXED(p) && (size_t)heap.begin <= (size_t)p && (size_t)p <= (size_t)heap.current;
 }
 
-bool is_valid_pointer (const size_t *p) { return !UNBOXED(p); }
+static inline bool is_valid_pointer (const size_t *p) { return !UNBOXED(p); }
 
 static inline void queue_enqueue (heap_iterator *tail_iter, void *obj) {
   void *tail         = tail_iter->current;

@@ -94,9 +94,9 @@ extern void __shutdown (
 // extern void __post_gc (void);
 
 // invoked from ASM
-extern void gc_test_and_mark_root (size_t **root);
-inline bool is_valid_heap_pointer (const size_t *);
-inline bool is_valid_pointer (const size_t *);
+extern void        gc_test_and_mark_root (size_t **root);
+bool               is_valid_heap_pointer (const size_t *);
+static inline bool is_valid_pointer (const size_t *);
 
 void clear_extra_roots (void);
 
