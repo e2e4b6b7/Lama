@@ -227,7 +227,29 @@ let compile cmd env imports code =
         let env, pushs = push_args env [] n in
         let _, env = env#allocate in
         ( env,
-          pushs
+          [
+            Mov (esp, M "__gc_stack_top");
+            Push ebx;
+            Push ecx;
+            Push esi;
+            Push edi;
+            Push eax;
+            Push edx;
+            Push ebp;
+            Push esp;
+            Push (L (box n));
+            Call "Lforce_gc";
+            Binop ("+", L 4, esp);
+            Pop esp;
+            Pop ebp;
+            Pop edx;
+            Pop eax;
+            Pop edi;
+            Pop esi;
+            Pop ecx;
+            Pop ebx;
+          ]
+          @ pushs
           @ [ Mov (esp, M "__gc_stack_top"); Mov (ebp, esp); Pop ebp ]
           @ (if env#has_closure then [ Pop ebx ] else [])
           @ [ Jmp f ] )
@@ -253,9 +275,36 @@ let compile cmd env imports code =
             | _ -> List.rev pushs
           in
           ( env,
-            pushr @ pushs
+            [
+              Push ebx;
+              Push ecx;
+              Push esi;
+              Push edi;
+              Push eax;
+              Push edx;
+              Push ebp;
+              Push esp;
+              Mov (esp, M "__gc_stack_top");
+              (match f with
+              | "Lsplit" | "LmakeArray" | "LmakeString" -> List.hd pushs
+              (* | _ -> Push (L (box n))); *)
+              | _ -> Push (L (box 20)));
+              (* Push (L (box n)); *)
+              (* Push (L (box (List.hd pushs))); *)
+              Call "Lforce_gc";
+              Binop ("+", L 4, esp);
+              Pop esp;
+              Pop ebp;
+              Pop edx;
+              Pop eax;
+              Pop edi;
+              Pop esi;
+              Pop ecx;
+              Pop ebx;
+            ]
+            @ pushr @ pushs
             @ [
-                Mov (esp, M "__gc_stack_top");
+                (* Mov (esp, M "__gc_stack_top"); *)
                 Call f;
                 Binop ("+", L (word_size * List.length pushs), esp);
               ]
@@ -295,7 +344,29 @@ let compile cmd env imports code =
                 in
                 let s, env = env#allocate in
                 ( env,
-                  pushr @ push_closure
+                  [
+                    Push ebx;
+                    Push ecx;
+                    Push esi;
+                    Push edi;
+                    Push eax;
+                    Push edx;
+                    Push ebp;
+                    Push esp;
+                    Mov (esp, M "__gc_stack_top");
+                    Push (L (box closure_len));
+                    Call "Lforce_gc";
+                    Binop ("+", L 4, esp);
+                    Pop esp;
+                    Pop ebp;
+                    Pop edx;
+                    Pop eax;
+                    Pop edi;
+                    Pop esi;
+                    Pop ecx;
+                    Pop ebx;
+                  ]
+                  @ pushr @ push_closure
                   @ [
                       Push (M ("$" ^ name));
                       Push (L (box closure_len));
@@ -504,11 +575,11 @@ let compile cmd env imports code =
                   in
                   names
                   @ (if names = [] then []
-                    else
-                      [
-                        Meta
-                          (Printf.sprintf "\t.stabn 192,0,0,%s-%s" scope.blab f);
-                      ])
+                     else
+                       [
+                         Meta
+                           (Printf.sprintf "\t.stabn 192,0,0,%s-%s" scope.blab f);
+                       ])
                   @ (List.flatten @@ List.map stabs_scope scope.subs)
                   @
                   if names = [] then []
@@ -528,37 +599,37 @@ let compile cmd env imports code =
                 ( env,
                   [ Meta (Printf.sprintf "\t.type %s, @function" name) ]
                   @ (if f = "main" then []
-                    else
-                      [
-                        Meta
-                          (Printf.sprintf "\t.stabs \"%s:F1\",36,0,0,%s" name f);
-                      ]
-                      @ List.mapi
-                          (fun i a ->
-                            Meta
-                              (Printf.sprintf "\t.stabs \"%s:p1\",160,0,0,%d" a
-                                 ((i * 4) + 8)))
-                          args
-                      @ List.flatten
-                      @@ List.map stabs_scope scopes)
+                     else
+                       [
+                         Meta
+                           (Printf.sprintf "\t.stabs \"%s:F1\",36,0,0,%s" name f);
+                       ]
+                       @ List.mapi
+                           (fun i a ->
+                             Meta
+                               (Printf.sprintf "\t.stabs \"%s:p1\",160,0,0,%d" a
+                                  ((i * 4) + 8)))
+                           args
+                       @ List.flatten
+                       @@ List.map stabs_scope scopes)
                   @ [ Meta "\t.cfi_startproc" ]
                   @ (if has_closure then [ Push edx ] else [])
                   @ (if f = cmd#topname then
-                     [
-                       Mov (M "_init", eax);
-                       Binop ("test", eax, eax);
-                       CJmp ("z", "_continue");
-                       Ret;
-                       Label "_ERROR";
-                       Call "Lbinoperror";
-                       Ret;
-                       Label "_ERROR2";
-                       Call "Lbinoperror2";
-                       Ret;
-                       Label "_continue";
-                       Mov (L 1, M "_init");
-                     ]
-                    else [])
+                       [
+                         Mov (M "_init", eax);
+                         Binop ("test", eax, eax);
+                         CJmp ("z", "_continue");
+                         Ret;
+                         Label "_ERROR";
+                         Call "Lbinoperror";
+                         Ret;
+                         Label "_ERROR2";
+                         Call "Lbinoperror2";
+                         Ret;
+                         Label "_continue";
+                         Mov (L 1, M "_init");
+                       ]
+                     else [])
                   @ [
                       Push ebp;
                       Meta
@@ -576,15 +647,34 @@ let compile cmd env imports code =
                       Repmovsl;
                     ]
                   @ (if f = "main" then
-                     [
-                       Call "__gc_init";
-                       Mov (esp, M "__gc_stack_top");
-                       Push (I (12, ebp));
-                       Push (I (8, ebp));
-                       Call "set_args";
-                       Binop ("+", L 8, esp);
-                     ]
-                    else [])
+                       [
+                         Call "__gc_init";
+                         Mov (esp, M "__gc_stack_top");
+                         Push ebx;
+                         Push ecx;
+                         Push esi;
+                         Push edi;
+                         Push eax;
+                         Push edx;
+                         Push ebp;
+                         Push esp;
+                         Push (I (8, ebp));
+                         Call "Lforce_gc";
+                         Binop ("+", L 4, esp);
+                         Pop esp;
+                         Pop ebp;
+                         Pop edx;
+                         Pop eax;
+                         Pop edi;
+                         Pop esi;
+                         Pop ecx;
+                         Pop ebx;
+                         Push (I (12, ebp));
+                         Push (I (8, ebp));
+                         Call "set_args";
+                         Binop ("+", L 8, esp);
+                       ]
+                     else [])
                   @
                   if f = cmd#topname then
                     List.map
@@ -604,8 +694,9 @@ let compile cmd env imports code =
                     Pop ebp;
                   ]
                   @ env#rest_closure
-                  @ (if name = "main" then [ Binop ("^", eax, eax); Call "Lgc" ]
-                    else [])
+                  @ (if name = "main" then [ Binop ("^", eax, eax) ]
+                       (* Call "Lgc" ] *)
+                     else [])
                   @ [
                       Meta "\t.cfi_restore\t5";
                       Meta "\t.cfi_def_cfa\t4, 4";
@@ -903,8 +994,8 @@ class env prg =
           [ Meta (Printf.sprintf "\t.stabn 68,0,%d,%s" line lab); Label lab ]
         else
           (if first_line then
-           [ Meta (Printf.sprintf "\t.stabn 68,0,%d,0" line) ]
-          else [])
+             [ Meta (Printf.sprintf "\t.stabn 68,0,%d,0" line) ]
+           else [])
           @ [
               Meta (Printf.sprintf "\t.stabn 68,0,%d,%s-%s" line lab fname);
               Label lab;

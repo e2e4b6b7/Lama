@@ -49,28 +49,45 @@ void handler (int sig) {
   exit(1);
 }
 
+// void *alloc (size_t size) {
+// #ifdef FULL_INVARIANT_CHECKS
+//   ++cur_id;
+// #endif
+//   size_t bytes_sz = size;
+//   size            = BYTES_TO_WORDS(size);
+// #ifdef DEBUG_VERSION
+//   fprintf(stderr, "allocation of size %zu words (%zu bytes): ", size, bytes_sz);
+// #endif
+//   void *p = gc_alloc_on_existing_heap(size);
+//   if (!p) {
+//     // not enough place in heap, need to perform GC cycle
+//     gc_alloc(size);
+//     p = gc_alloc_on_existing_heap(size);
+//     if (!p) {
+//       fprintf(stderr, "ERROR: out of memory\n");
+//       exit(1);
+//     }
+//   }
+// #ifdef DEBUG_VERSION
+//   fprintf(stderr, "\t allocated (begin, non content) %p, size=%zu; ", p, bytes_sz);
+// #endif
+//   return p;
+// }
 void *alloc (size_t size) {
 #ifdef FULL_INVARIANT_CHECKS
+  assert(cur_id < __INT_MAX__);
   ++cur_id;
 #endif
   size_t bytes_sz = size;
   size            = BYTES_TO_WORDS(size);
-#ifdef DEBUG_VERSION
+  // #ifdef DEBUG_VERSION
   fprintf(stderr, "allocation of size %zu words (%zu bytes): ", size, bytes_sz);
-#endif
+  // #endif
   void *p = gc_alloc_on_existing_heap(size);
   if (!p) {
-    // not enough place in heap, need to perform GC cycle
-    gc_alloc(size);
-    p = gc_alloc_on_existing_heap(size);
-    if (!p) {
-      fprintf(stderr, "ERROR: out of memory\n");
-      exit(1);
-    }
+    fprintf(stderr, "ERROR: out of memory: %zu\n", size);
+    exit(1);
   }
-#ifdef DEBUG_VERSION
-  fprintf(stderr, "\t allocated (begin, non content) %p, size=%zu; ", p, bytes_sz);
-#endif
   return p;
 }
 
@@ -272,6 +289,16 @@ extern void gc_alloc (size_t size) {
 #endif
 }
 
+void gc (size_t i) {
+  if (heap.current + i >= heap.end) {
+    fprintf(stderr, "gc: NOT enough: %zu %zu\n", i, heap.end - heap.current);
+    gc_alloc(i);
+    fprintf(stderr, "gc: done free: %zu\n", heap.end - heap.current);
+  } else {
+    fprintf(stderr, "gc: enough: %zu\n", i);
+  }
+}
+
 void gc_root_scan_stack (void) {
   for (size_t *p = (void *)__gc_stack_top; p <= (size_t *)__gc_stack_bottom; p++) {
     gc_test_and_mark_root((size_t **)p);
@@ -324,6 +351,8 @@ void compact_phase (size_t additional_size) {
   heap.end     = heap.begin + next_heap_pseudo_size;
   heap.size    = next_heap_pseudo_size;
   heap.current = heap.begin + (old_heap.current - old_heap.begin);
+
+  fprintf(stderr, "355: %zu %zu %zu\n", heap.size, heap.current - heap.begin, live_size);
 
   update_references(&old_heap);
   physically_relocate(&old_heap);
@@ -439,9 +468,9 @@ void scan_and_fix_region_roots (memory_chunk *old_heap) {
           (void *)heap.begin + ((void *)get_forward_address(obj_ptr) - (void *)old_heap->begin);
       size_t content_offset = get_header_size(get_type_row_ptr(obj_ptr));
       *(void **)ptr         = new_addr + content_offset;
-#ifdef DEBUG_VERSION
-      fprintf(stderr, "|\textra root (%p) %p -> %p\n", extra_roots.roots[i], ptr_value, *ptr);
-#endif
+      // #ifdef DEBUG_VERSION
+      // fprintf(stderr, "|\textra root (%p) %p -> %p\n", extra_roots.roots[i], ptr_value, *ptr);
+      // #endif
     }
   }
 #ifdef DEBUG_VERSION

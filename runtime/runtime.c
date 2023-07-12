@@ -7,6 +7,8 @@
 #include "gc.h"
 #include "runtime_common.h"
 
+#include <signal.h>
+
 #define __ENABLE_GC__
 #ifndef __ENABLE_GC__
 #  define alloc malloc
@@ -819,6 +821,7 @@ extern void *Lstring (void *p) {
   printValue(p);
 
   push_extra_root(&p);
+  gc(strlen(stringBuf.contents));
   s = Bstring(stringBuf.contents);
   pop_extra_root(&p);
 
@@ -1296,6 +1299,18 @@ extern int Lread () {
 }
 
 extern int Lgc (void) { gc_alloc(1); }
+
+extern int Lforce_gc (size_t i) {
+  if (i == 0 || i == 1) { i = 2; }
+
+  // if (i > 1000 || (BYTES_TO_WORDS((size_t)UNBOX(i)) + 10) > 1000) {
+  //   fprintf(stderr, "%zu %zu\n", i, (BYTES_TO_WORDS((size_t)UNBOX(i)) + 10));
+  //   kill(getpid(), SIGSEGV);
+  // }
+
+  //gc(BYTES_TO_WORDS((size_t)UNBOX(i)) + 10);
+  gc((size_t)UNBOX(i) + 10);
+}
 
 extern int Lbinoperror (void) {
   fprintf(stderr, "ERROR: POINTER ARITHMETICS is forbidden; EXIT\n");

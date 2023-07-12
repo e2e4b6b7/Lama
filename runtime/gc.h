@@ -18,7 +18,7 @@
 #ifdef DEBUG_VERSION
 #  define MINIMUM_HEAP_CAPACITY (8)
 #else
-#  define MINIMUM_HEAP_CAPACITY (1 << 2)
+#  define MINIMUM_HEAP_CAPACITY (1 << 11)
 #endif
 
 #include <stdbool.h>
@@ -59,6 +59,7 @@ void *alloc(size_t);
 // takes number of words as a parameter
 // void *gc_alloc(size_t);
 extern void gc_alloc(size_t);
+void gc (size_t);
 // takes number of words as a parameter
 void *gc_alloc_on_existing_heap(size_t);
 
