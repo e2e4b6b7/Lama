@@ -240,6 +240,7 @@ let compile cmd env imports code =
             Push (L (box n));
             Call "Lforce_gc";
             Binop ("+", L 4, esp);
+            Mov (L 0, M "__gc_stack_top");
             Pop esp;
             Pop ebp;
             Pop edx;
@@ -250,7 +251,7 @@ let compile cmd env imports code =
             Pop ebx;
           ]
           @ pushs
-          @ [ Mov (esp, M "__gc_stack_top"); Mov (ebp, esp); Pop ebp ]
+          @ [ (* Mov (esp, M "__gc_stack_top");  *) Mov (ebp, esp); Pop ebp ]
           @ (if env#has_closure then [ Pop ebx ] else [])
           @ [ Jmp f ] )
       else
@@ -293,6 +294,7 @@ let compile cmd env imports code =
               (* Push (L (box (List.hd pushs))); *)
               Call "Lforce_gc";
               Binop ("+", L 4, esp);
+              Mov (L 0, M "__gc_stack_top");
               Pop esp;
               Pop ebp;
               Pop edx;
@@ -357,6 +359,7 @@ let compile cmd env imports code =
                     Push (L (box closure_len));
                     Call "Lforce_gc";
                     Binop ("+", L 4, esp);
+                    Mov (L 0, M "__gc_stack_top");
                     Pop esp;
                     Pop ebp;
                     Pop edx;
@@ -370,7 +373,7 @@ let compile cmd env imports code =
                   @ [
                       Push (M ("$" ^ name));
                       Push (L (box closure_len));
-                      Mov (esp, M "__gc_stack_top");
+                      (* Mov (esp, M "__gc_stack_top"); *)
                       Call "Bclosure";
                       Binop ("+", L (word_size * (closure_len + 2)), esp);
                       Mov (eax, s);
@@ -673,6 +676,7 @@ let compile cmd env imports code =
                          Push (I (8, ebp));
                          Call "set_args";
                          Binop ("+", L 8, esp);
+                         Mov (L 0, M "__gc_stack_top");
                        ]
                      else [])
                   @

@@ -821,7 +821,10 @@ extern void *Lstring (void *p) {
   printValue(p);
 
   push_extra_root(&p);
-  gc(strlen(stringBuf.contents));
+  // TODO: fix this call: it need to nbe __gc_stack_top defined
+  // TODO: why this call is needed?
+  // I guess we have just to fix gc call from X86.ml
+  // gc(strlen(stringBuf.contents));
   s = Bstring(stringBuf.contents);
   pop_extra_root(&p);
 

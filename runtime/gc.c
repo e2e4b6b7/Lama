@@ -290,6 +290,7 @@ extern void gc_alloc (size_t size) {
 }
 
 void gc (size_t i) {
+  assert(__gc_stack_top != 0);
   if (heap.current + i >= heap.end) {
     fprintf(stderr, "gc: NOT enough: %zu %zu\n", i, heap.end - heap.current);
     gc_alloc(i);
