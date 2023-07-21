@@ -3,6 +3,11 @@
 #include "gc.h"
 
 #include "runtime_common.h"
+#include "util.h"
+
+#ifdef FULL_INVARIANT_CHECKS
+#include "avl_tree.h"
+#endif
 
 #include <assert.h>
 #include <errno.h>
@@ -34,6 +39,11 @@ memory_chunk heap;
 static memory_chunk heap;
 #endif
 
+#ifdef FULL_INVARIANT_CHECKS
+static Node *curAvlRoot;
+static Node *nextAvlRoot;
+#endif
+
 #ifdef DEBUG_VERSION
 void dump_heap ();
 #endif
@@ -51,7 +61,7 @@ void handler (int sig) {
 
 void *alloc (size_t size) {
 #ifdef FULL_INVARIANT_CHECKS
-  ++cur_id;
+  assert(!__builtin_add_overflow(cur_id, 1, &cur_id));
 #endif
   size_t bytes_sz = size;
   size            = BYTES_TO_WORDS(size);
@@ -168,13 +178,28 @@ static void print_objects_traversal (char *filename, bool marked) {
     fprintf(stderr, "ERROR: print_objects_traversal: fopen error: %d\n", errno);
     exit(errno);
   }
+  size_t prev_id = 0;
   ftruncate(fileno(f), 0);
   for (heap_iterator it = heap_begin_iterator(); !heap_is_done_iterator(&it);
        heap_next_obj_iterator(&it)) {
     void *obj_header = it.current;
-    data *obj_data   = TO_DATA(get_object_content_ptr(obj_header));
+    void *obj_content = get_object_content_ptr(obj_header);
+    data *obj_data   = TO_DATA(obj_content);
     if ((obj_data->forward_address & 1) == marked) {
-      objects_dfs(f, get_object_content_ptr(obj_header));
+      assert(prev_id < obj_data->id);
+      print_object_info(f, obj_content);
+      // print object's fields
+      for (obj_field_iterator field_it = ptr_field_begin_iterator(obj_header);
+           !field_is_done_iterator(&field_it);
+           obj_next_field_iterator(&field_it)) {
+        size_t field_value = *(size_t *)field_it.cur_field;
+        if (is_valid_heap_pointer((size_t *)field_value)) {
+          print_object_info(f, (void *)field_value);
+        } else {
+          print_unboxed(f, (int)field_value);
+        }
+      }
+      prev_id = obj_data->id;
     }
   }
 
@@ -273,7 +298,7 @@ extern void gc_alloc (size_t size) {
 }
 
 void gc_root_scan_stack (void) {
-  for (size_t *p = (void *)__gc_stack_top; p <= (size_t *)__gc_stack_bottom; p++) {
+  for (size_t *p = (void *)__gc_stack_top; p < (size_t *)__gc_stack_bottom; p++) {
     gc_test_and_mark_root((size_t **)p);
   }
 }
@@ -309,40 +334,19 @@ void compact_phase (size_t additional_size) {
   // all in words
   size_t next_heap_size =
       MAX(live_size * EXTRA_ROOM_HEAP_COEFFICIENT + additional_size, MINIMUM_HEAP_CAPACITY);
-  size_t next_heap_pseudo_size =
-      MAX(next_heap_size, heap.size);   // this is weird but here is why it happens:
-  // if we allocate too little heap right now, we may lose access to some alive objects
-  // however, after we physically relocate all of our objects we will shrink allocated memory if it is possible
+  next_heap_size = MAX(next_heap_size, heap.size);
+  assert(next_heap_size <= INIT_HEAP_SIZE);
 
   memory_chunk old_heap = heap;
-  heap.begin            = mremap(
-      heap.begin, WORDS_TO_BYTES(heap.size), WORDS_TO_BYTES(next_heap_pseudo_size), MREMAP_MAYMOVE);
-  if (heap.begin == MAP_FAILED) {
-    perror("ERROR: compact_phase: mremap failed\n");
-    exit(1);
-  }
-  heap.end     = heap.begin + next_heap_pseudo_size;
-  heap.size    = next_heap_pseudo_size;
+  heap.end     = heap.begin + next_heap_size;
+  heap.size    = next_heap_size;
   heap.current = heap.begin + (old_heap.current - old_heap.begin);
 
   update_references(&old_heap);
   physically_relocate(&old_heap);
-
-  /*  // shrink it if possible, otherwise this code won't do anything, in both cases references
-  // will remain valid
-  heap.begin = mremap(
-      heap.begin,
-      WORDS_TO_BYTES(heap.size),
-      WORDS_TO_BYTES(next_heap_size),
-      0   // in this case we don't set MREMAP_MAYMOVE because it shouldn't move :)
-  );
-  if (heap.begin == MAP_FAILED) {
-    perror("ERROR: compact_phase: mremap failed\n");
-    exit(1);
-  }
-  heap.end     = heap.begin + next_heap_size;
-  heap.size    = next_heap_size;
-*/
+  avl_free(curAvlRoot);
+  curAvlRoot = nextAvlRoot;
+  nextAvlRoot = NULL;
   heap.current = heap.begin + live_size;
 }
 
@@ -360,6 +364,10 @@ size_t compute_locations () {
       size_t sz = BYTES_TO_WORDS(obj_size_header_ptr(header_ptr));
       // forward address is responsible for object header pointer
       set_forward_address(obj_content, (size_t)free_ptr);
+#ifdef FULL_INVARIANT_CHECKS
+      // we only care about pointers to content, thus we make offset from free_ptr
+      avl_insert(nextAvlRoot, (int) ((void*) free_ptr + (obj_content - header_ptr)));
+#endif
       free_ptr += sz;
     }
   }
@@ -381,10 +389,16 @@ void scan_and_fix_region (memory_chunk *old_heap, void *start, void *end) {
     // heap
     if (is_valid_pointer((size_t *)ptr_value) && (size_t)old_heap->begin <= ptr_value
         && ptr_value <= (size_t)old_heap->current) {
+#ifdef FULL_INVARIANT_CHECKS
+      assert(avl_search(curAvlRoot, (int) ptr_value) != NULL);
+#endif
       void *obj_ptr = (void *)heap.begin + ((void *)ptr_value - (void *)old_heap->begin);
       void *new_addr =
           (void *)heap.begin + ((void *)get_forward_address(obj_ptr) - (void *)old_heap->begin);
       size_t content_offset = get_header_size(get_type_row_ptr(obj_ptr));
+#ifdef FULL_INVARIANT_CHECKS
+      assert(avl_search(nextAvlRoot, (int) (new_addr + content_offset)) != NULL);
+#endif
       *(void **)ptr         = new_addr + content_offset;
     }
   }
@@ -400,9 +414,16 @@ void scan_and_fix_region_roots (memory_chunk *old_heap) {
   for (int i = 0; i < extra_roots.current_free; i++) {
     size_t *ptr       = (size_t *)extra_roots.roots[i];
     size_t  ptr_value = *ptr;
+    if (!is_valid_pointer((size_t *)ptr_value)) {
+      continue;
+    }
     // skip this one since it was already fixed from scanning the stack
-    if (extra_roots.roots[i] >= (void **)__gc_stack_top
-        && extra_roots.roots[i] < (void **)__gc_stack_bottom) {
+    if ((extra_roots.roots[i] >= (void **)__gc_stack_top
+        && extra_roots.roots[i] < (void **)__gc_stack_bottom)
+        ||
+        (extra_roots.roots[i] <= (void **)&__stop_custom_data
+        && extra_roots.roots[i] >= (void **)&__start_custom_data)
+    ) {
 #ifdef DEBUG_VERSION
       if (is_valid_heap_pointer((size_t *)ptr_value)) {
         fprintf(stderr,
@@ -412,9 +433,7 @@ void scan_and_fix_region_roots (memory_chunk *old_heap) {
                 __gc_stack_top,
                 __gc_stack_bottom);
       } else if ((extra_roots.roots[i] <= (void *)&__stop_custom_data
-                  && extra_roots.roots[i] >= (void *)&__start_custom_data)
-                 || (extra_roots.roots[i] <= (void *)&__stop_custom_data
-                     && extra_roots.roots[i] >= (void *)&__start_custom_data)) {
+                  && extra_roots.roots[i] >= (void *)&__start_custom_data)) {
         fprintf(
             stderr,
             "|\tskip extra root: %p (%p), since it points to Lama's static area stop=%p start=%p\n",
@@ -432,12 +451,17 @@ void scan_and_fix_region_roots (memory_chunk *old_heap) {
 #endif
       continue;
     }
-    if (is_valid_pointer((size_t *)ptr_value) && (size_t)old_heap->begin <= ptr_value
-        && ptr_value <= (size_t)old_heap->current) {
+    if ((size_t)old_heap->begin <= ptr_value && ptr_value <= (size_t)old_heap->current) {
+#ifdef FULL_INVARIANT_CHECKS
+      assert(avl_search(curAvlRoot, (int) ptr_value) != NULL);
+#endif
       void *obj_ptr = (void *)heap.begin + ((void *)ptr_value - (void *)old_heap->begin);
       void *new_addr =
           (void *)heap.begin + ((void *)get_forward_address(obj_ptr) - (void *)old_heap->begin);
       size_t content_offset = get_header_size(get_type_row_ptr(obj_ptr));
+#ifdef FULL_INVARIANT_CHECKS
+      assert(avl_search(nextAvlRoot, (int) (new_addr + content_offset)) != NULL);
+#endif
       *(void **)ptr         = new_addr + content_offset;
 #ifdef DEBUG_VERSION
       fprintf(stderr, "|\textra root (%p) %p -> %p\n", extra_roots.roots[i], ptr_value, *ptr);
@@ -459,9 +483,11 @@ void update_references (memory_chunk *old_heap) {
       for (obj_field_iterator field_iter = ptr_field_begin_iterator(it.current);
            !field_is_done_iterator(&field_iter);
            obj_next_ptr_field_iterator(&field_iter)) {
-
         size_t *field_value = *(size_t **)field_iter.cur_field;
         if (field_value < old_heap->begin || field_value > old_heap->current) { continue; }
+#ifdef FULL_INVARIANT_CHECKS
+        assert(avl_search(curAvlRoot, (int) field_value) != NULL);
+#endif
         // this pointer should also be modified according to old_heap->begin
         void *field_obj_content_addr =
             (void *)heap.begin + (*(void **)field_iter.cur_field - (void *)old_heap->begin);
@@ -481,6 +507,10 @@ void update_references (memory_chunk *old_heap) {
           exit(1);
         }
 #endif
+#ifdef FULL_INVARIANT_CHECKS
+        // check that we calculated address correctly
+        assert(avl_search(nextAvlRoot, (int) (new_addr + content_offset)) != NULL);
+#endif
         *(void **)field_iter.cur_field = new_addr + content_offset;
       }
     }
@@ -488,7 +518,7 @@ void update_references (memory_chunk *old_heap) {
   }
   // fix pointers from stack
   // scan_and_fix_region(old_heap, (void *)__gc_stack_top + 4, (void *)__gc_stack_bottom + 4);
-  scan_and_fix_region(old_heap, (void *)__gc_stack_top, (void *)__gc_stack_bottom + 4);
+  scan_and_fix_region(old_heap, (void *)__gc_stack_top, (void *)__gc_stack_bottom);
 
   // fix pointers from extra_roots
   scan_and_fix_region_roots(old_heap);
@@ -566,6 +596,8 @@ void mark (void *obj) {
     return;
   }
 
+  assert(avl_search(curAvlRoot, (int) obj) != NULL);
+
   // TL;DR: [q_head_iter, q_tail_iter) q_head_iter -- current dequeue's victim, q_tail_iter -- place for next enqueue
   // in forward_address of corresponding element we store address of element to be removed after dequeue operation
   heap_iterator q_head_iter = heap_begin_iterator();
@@ -590,6 +622,9 @@ void mark (void *obj) {
       }
       // if we came to this point it must be true that field_value is unmarked and not currently in queue
       // thus, we maintain the invariant
+#ifdef FULL_INVARIANT_CHECKS
+      assert(avl_search(curAvlRoot, (int) field_value) != NULL);
+#endif
       queue_enqueue(&q_tail_iter, field_value);
     }
   }
@@ -631,6 +666,9 @@ extern void gc_test_and_mark_root (size_t **root) {
 #endif
     return;
   }
+#ifdef FULL_INVARIANT_CHECKS
+  assert(avl_search(curAvlRoot, (int)(*root)) != NULL);
+#endif
   mark((void *)*root);
 }
 
@@ -639,15 +677,17 @@ extern void __init (void) {
   size_t space_size = INIT_HEAP_SIZE * sizeof(size_t);
 
   srandom(time(NULL));
-
+  curAvlRoot = NULL;
+  nextAvlRoot = NULL;
   heap.begin = mmap(
       NULL, space_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_32BIT, -1, 0);
   if (heap.begin == MAP_FAILED) {
     perror("ERROR: __init: mmap failed\n");
     exit(1);
   }
-  heap.end     = heap.begin + INIT_HEAP_SIZE;
-  heap.size    = INIT_HEAP_SIZE;
+  size_t virtual_size = 1 << 10;
+  heap.end     = heap.begin + virtual_size;
+  heap.size    = virtual_size;
   heap.current = heap.begin;
   clear_extra_roots();
 }
@@ -657,6 +697,9 @@ extern void __shutdown (void) {
 #ifdef FULL_INVARIANT_CHECKS
   cur_id = 0;
 #endif
+  avl_free(curAvlRoot);
+  nextAvlRoot = NULL;
+  curAvlRoot = NULL;
   heap.begin        = NULL;
   heap.end          = NULL;
   heap.size         = 0;
@@ -940,6 +983,9 @@ void *alloc_string (int len) {
 #endif
   obj->forward_address = 0;
   assert(TAG(obj->data_header) == STRING_TAG);
+#ifdef FULL_INVARIANT_CHECKS
+  avl_insert(curAvlRoot, (int) obj->contents);
+#endif
   return obj;
 }
 
@@ -959,6 +1005,9 @@ void *alloc_array (int len) {
 #endif
   obj->forward_address = 0;
   assert(TAG(obj->data_header) == ARRAY_TAG);
+#ifdef FULL_INVARIANT_CHECKS
+  avl_insert(curAvlRoot, (int) obj->contents);
+#endif
   return obj;
 }
 
@@ -979,6 +1028,9 @@ void *alloc_sexp (int members) {
   obj->contents.forward_address = 0;
   obj->tag                      = 0;
   assert(TAG(obj->contents.data_header) == SEXP_TAG);
+#ifdef FULL_INVARIANT_CHECKS
+  avl_insert(curAvlRoot, (int) obj->contents.contents);
+#endif
   return obj;
 }
 
@@ -999,5 +1051,6 @@ void *alloc_closure (int captured) {
 #endif
   obj->forward_address = 0;
   assert(TAG(obj->data_header) == CLOSURE_TAG);
+  avl_insert(curAvlRoot, (int) obj->contents);
   return obj;
 }

@@ -485,7 +485,7 @@ extern struct re_pattern_buffer *Lregexp (char *regexp) {
 
   int n = (int)re_compile_pattern(regexp, strlen(regexp), b);
 
-  if (n != 0) { failure("%", strerror(n)); };
+  if (n != 0) { failure("%s", strerror(n)); };
 
   return b;
 }

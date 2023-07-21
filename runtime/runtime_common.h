@@ -40,10 +40,6 @@
 #define BYTES_TO_WORDS(bytes) (((bytes)-1) / sizeof(size_t) + 1)
 #define WORDS_TO_BYTES(words) ((words) * sizeof(size_t))
 
-// CAREFUL WITH DOUBLE EVALUATION!
-#define MAX(x, y) (((x) > (y)) ? (x) : (y))
-#define MIN(x, y) (((x) < (y)) ? (x) : (y))
-
 typedef struct {
   // store tag in the last three bits to understand what structure this is, other bits are filled with
   // other utility info (i.e., size for array, number of fields for s-expression)
