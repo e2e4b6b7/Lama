@@ -3,6 +3,7 @@
 #define _GNU_SOURCE 1
 
 #include "runtime.h"
+#include <regex.h>
 
 #include "gc.h"
 #include "runtime_common.h"
@@ -472,6 +473,8 @@ extern void *Lsubstring (void *subj, aint p, aint l) {
           pp,
           ll,
           LEN(d->data_header));
+  exit(1);
+  return NULL;
 }
 
 extern struct re_pattern_buffer *Lregexp (char *regexp) {
@@ -610,7 +613,7 @@ extern aint LflatCompare (void *p, void *q) {
     return -1;
   } else if (~UNBOXED(q)) {
     return BOX(p - q);
-  } else BOX(1);
+  } else return BOX(1);
 }
 
 extern aint Lcompare (void *p, void *q) {
@@ -623,7 +626,7 @@ extern aint Lcompare (void *p, void *q) {
 
   if (UNBOXED(p)) {
     if (UNBOXED(q)) return BOX(UNBOX(p) - UNBOX(q));
-    else return BOX(-1);
+    else return BOX(-1u);
   } else if (UNBOXED(q)) return BOX(1);
   else {
     if (is_valid_heap_pointer(p)) {
@@ -667,7 +670,7 @@ extern aint Lcompare (void *p, void *q) {
           if (c != BOX(0)) return c;
         }
         return BOX(0);
-      } else return BOX(-1);
+      } else return BOX(-1u);
     } else if (is_valid_heap_pointer(q)) return BOX(1);
     else return BOX(p - q);
   }
@@ -943,7 +946,7 @@ extern aint Bsexp_tag_patt (void *x) {
   return BOX(TAG(TO_DATA(x)->data_header) == SEXP_TAG);
 }
 
-extern void *Bsta (void *v, aint i, void *x) {
+extern void *Bsta (void *x, aint i, void *v) {
   if (UNBOXED(i)) {
     ASSERT_BOXED(".sta:3", x);
     data *d = TO_DATA(x);
@@ -1165,6 +1168,8 @@ extern FILE *Lfopen (char *f, char *m) {
   if (h) return h;
 
   failure("fopen (\"%s\", \"%s\"): %s, %s, %s\n", f, m, strerror(errno));
+  exit(1);
+  return NULL;
 }
 
 extern void Lfclose (FILE *f) {
@@ -1210,6 +1215,8 @@ extern void *Lfread (char *fname) {
   }
 
   failure("fread (\"%s\"): %s\n", fname, strerror(errno));
+  exit(1);
+  return NULL;
 }
 
 extern void Lfwrite (char *fname, char *contents) {
