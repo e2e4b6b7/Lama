@@ -1,6 +1,6 @@
 #define _GNU_SOURCE 1
 
-// #define DEBUG_PRINT
+ #define DEBUG_PRINT
 
 #include "gc.h"
 
@@ -277,9 +277,9 @@ void compact_phase (size_t additional_size) {
   size_t next_heap_pseudo_size = MAX(next_heap_size, heap.size);
 
   memory_chunk old_heap = heap;
-  heap.begin            = mremap(heap.begin, WORDS_TO_BYTES(heap.size), WORDS_TO_BYTES(next_heap_pseudo_size), MREMAP_MAYMOVE);
+  heap.begin            = mmap(heap.begin, WORDS_TO_BYTES(next_heap_pseudo_size), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if (heap.begin == MAP_FAILED) {
-    perror("ERROR: compact_phase: mremap failed\n");
+    perror("ERROR: compact_phase: mmap failed\n");
     exit(1);
   }
   heap.end     = heap.begin + next_heap_pseudo_size;
@@ -578,12 +578,19 @@ void __gc_init (void) {
 
 void __init (void) {
   signal(SIGSEGV, handler);
-  size_t space_size = INIT_HEAP_SIZE * sizeof(size_t);
+  size_t space_size = GC_ENTIRE_HEAP_SIZE * sizeof(size_t);
+  size_t init_size = INIT_HEAP_SIZE * sizeof(size_t);
 
   srandom(time(NULL));
 
-  heap.begin = mmap(
-      NULL, space_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  // preallocate address space
+  heap.begin = mmap(NULL, space_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  if (heap.begin == MAP_FAILED) {
+    perror("ERROR: __init: mmap pre-allocation failed\n");
+    exit(1);
+  }
+  // allocate actual memory
+  heap.begin = mmap(heap.begin, init_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
   if (heap.begin == MAP_FAILED) {
     perror("ERROR: __init: mmap failed\n");
     exit(1);
