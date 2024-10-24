@@ -43,36 +43,34 @@
      (run cat stdpath2.ml)
      (run tr -d '\n'))))))
 
+(rule
+  (targets X86_32.ml)
+  (deps    X86_32.p.ml)
+  (action  (run %{project_root}/src/pp5+gt+plugins+ostap+dump.byte X86_32.p.ml -o X86_32.ml)))
+
+(rule
+  (targets Language.ml)
+  (deps    Language.p.ml)
+  (action  (run %{project_root}/src/pp5+gt+plugins+ostap+dump.byte Language.p.ml -o Language.ml)))
+
+(rule
+  (targets SM.ml)
+  (deps    SM.p.ml)
+  (action  (run %{project_root}/src/pp5+gt+plugins+ostap+dump.byte SM.p.ml -o SM.ml)))
+
 (library
  (name liba)
  (modules Language Pprinter stdpath version X86_32 X86_64 SM Options)
  (libraries GT ostap posix-uname)
- (flags
-  (:standard
-   -rectypes
-   ;-dsource
-   ))
- ;  (ocamlopt_flags
- ;   (:standard -dsource))
+ (instrumentation (backend bisect_ppx))
+ (flags (:standard -rectypes))
  (wrapped false)
  (preprocess
   (per_module
    ((pps GT.ppx_all)
     SM
-    X86_64)
-   ((action
-     (run %{project_root}/src/pp5+gt+plugins+ostap+dump.byte %{input-file}))
-    Language
-    Pprinter
-    X86_32
-    stdpath
-    version)))
- (preprocessor_deps
-  (file %{project_root}/src/pp5+gt+plugins+ostap+dump.byte)
-  ;(file %{project_root}/src/pp5+gt+plugins+ostap+dump.exe)
-  )
- ;(inline_tests)
- )
+    )))
+    )
 
 (executable
  (name Driver)
@@ -81,18 +79,6 @@
   (:standard -rectypes))
  (modules Driver)
  (libraries liba unix))
-
-; (rule
-;  (targets pp5+gt+plugins+ostap+dump.exe)
-;  (deps
-;   (package GT))
-;  (action
-;   (run
-;    mkcamlp5.opt
-;    -package
-;    camlp5,camlp5.pa_o,camlp5.pr_dump,camlp5.extend,camlp5.quotations,ostap.syntax,GT.syntax.all,GT.syntax
-;    -o
-;    %{targets})))
 
 (rule
  (targets pp5+gt+plugins+ostap+dump.byte)
